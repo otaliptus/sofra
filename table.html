@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#241a14">
+  <meta name="description" content="Set a Turkish breakfast table, pour a glass of çay, and photograph your spread.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23953323'/%3E%3Ctext x='14' y='49' font-size='52' font-family='Georgia' font-style='italic' fill='%23fff5d6'%3ES%3C/text%3E%3C/svg%3E">
+  <title>Sofra — Turkish breakfast simulator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="game">
+    <section class="stage" aria-label="Breakfast table">
+      <div id="board" class="board">
+        <canvas id="table" aria-label="Turkish breakfast table"></canvas>
+        <div id="hit-layer"></div>
+      </div>
+      <header class="tools">
+        <h1>Sofra<span>.</span></h1>
+        <div class="corner">
+          <button class="shutter" id="photo" aria-label="Take a photo" title="Take a photo"><i data-icon="camera"></i></button>
+          <details id="menu">
+            <summary aria-label="Table options" title="Table options"><i data-icon="more"></i></summary>
+            <div class="menu-sheet">
+              <button id="undo"><i data-icon="undo"></i>Undo</button>
+              <button id="reset"><i data-icon="reset"></i>New table</button>
+              <button id="sound" aria-pressed="false"></button>
+              <button id="help"><i data-icon="help"></i>How to play</button>
+              <div class="cloths" role="group" aria-label="Linen colour">
+                <span>Linen</span><button data-cloth="brick" aria-label="Brick linen" title="Brick"></button><button data-cloth="olive" aria-label="Olive linen" title="Olive"></button><button data-cloth="blue" aria-label="Blue linen" title="Blue"></button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </header>
+      <div class="context" id="context" hidden></div>
+    </section>
+    <nav class="shelf" aria-label="Breakfast ingredients">
+      <div class="rail">
+        <button id="prev-food" class="rail-arrow" aria-label="Previous ingredients"><i data-icon="left"></i></button>
+        <div class="food-strip" id="foods" aria-label="Choose a food"></div>
+        <button id="next-food" class="rail-arrow" aria-label="More ingredients"><i data-icon="right"></i></button>
+      </div>
+    </nav>
+  </main>
+  <dialog id="dialog"><div id="dialog-body"></div></dialog>
+  <div id="notice" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

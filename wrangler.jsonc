@@ -1,0 +1,9 @@
+{
+  "name": "sofra",
+  "compatibility_date": "2026-11-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "sofra.otaliptus.com", "custom_domain": true }],
+  "build": { "command": "npm run build" },
+  "assets": { "directory": "./dist" }
+}

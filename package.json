@@ -1,0 +1,11 @@
+{
+  "name": "sofra-breakfast-table",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "python3 -m http.server 4173 --bind 127.0.0.1"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  }
+}

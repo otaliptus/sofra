@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1c1510">
+  <meta name="description" content="Ekmeğini seç, kahvaltını hazırla ve fotoğrafını çek.">
+  <link rel="icon" href="data:,"><title>Sofra — Kahvaltı hazırla</title>
+  <link rel="stylesheet" href="workbench.css?v=movable-cover">
+  <script>if(location.hash.startsWith('#sofra='))location.replace('table.html'+location.hash)</script>
+</head>
+<body>
+  <main id="game">
+    <header><nav aria-label="Sofra">
+      <div id="nav-left"><button id="fresh">Ekmek seç</button><button id="help">Yardım</button></div>
+      <button id="back" hidden>Geri</button>
+      <label id="cover-control" hidden>Üst parça <select id="photo-cover"></select></label>
+      <button id="audio" aria-label="Sesi aç" aria-pressed="false" title="Ses">♪</button>
+      <button id="lid" hidden>Sandviçi kapat</button>
+      <button id="album">Albümüm</button>
+      <button id="grand-reset" disabled title="Sofrayı baştan hazırla">Sıfırla</button>
+    </nav></header>
+    <section id="stage" aria-label="Kahvaltı tabağı">
+      <canvas id="scene" tabindex="0" aria-label="Simit. Malzeme eklemek için tepsiyi kullan."></canvas>
+      <div id="finder" hidden></div>
+      <button id="turn" hidden title="Döndürmek için sürükle" aria-label="Malzemeyi döndür">⟳</button>
+      <button id="piece-action" hidden>Kaldır</button>
+      <div id="cloths" role="group" aria-label="Sofra bezi"></div>
+      <div id="knife" aria-hidden="true" hidden><img id="utensil" alt="" src="./assets/knife.webp"><img id="knife-load" alt="" hidden></div>
+      <output id="coach" role="status">Sofra hazırlanıyor…</output>
+    </section>
+    <footer>
+      <div class="shutter-row">
+        <button id="prev-food" class="rail-end" aria-label="Önceki malzemeler">Sürülecekler</button>
+        <div id="views" role="group" aria-label="Fotoğraf açısı" hidden></div>
+        <button id="shutter" disabled aria-label="Fotoğraf">Foto</button>
+        <button id="next-food" class="rail-end" aria-label="Sonraki malzemeler">Diğer malzemeler</button>
+      </div>
+      <div id="foods" class="food-strip" role="toolbar" aria-label="Sürülecekler ve malzemeler"></div>
+    </footer>
+  </main>
+  <dialog id="sheet"><div id="sheet-content"></div></dialog>
+  <script type="module" src="simit.js?v=movable-cover"></script>
+</body>
+</html>
