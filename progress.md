@@ -113,3 +113,7 @@ Domates salçası and biber salçası sit beside the other breakfast spreads. Ea
 Production bundles the game and gives its script, stylesheet and original artwork content-addressed URLs for browser caching. Meshes are built on first use. The board keeps the unchanged part of a food stack, caches stationary shadows during camera moves and preserves the viewfinder buffers across a 960px exposure. Cold-load and populated-table checks use the same viewport, connection profile and saved recipe for both builds. Reference renders covered edits, undo, drinks, alternative breads and saved photos.
 
 The tea glass and its contents are 25% larger in all three dimensions. The saucer and spoon retain their original scale. Picking and photo framing follow the new rim, and the pouring close-up uses a tighter crop.
+
+Both bread halves can be removed independently. The lower half can also be lifted out of a fully covered plate from Ekmek seç. Fillings settle onto the plate, and undo restores the bread with its spreads. The shelf includes avocado, strained yoghurt, chia seeds, banana, dark chocolate shards and strawberry. Chia is sprinkled, and the three fruit slices support thickness changes.
+
+Tomato and pepper paste transfer from a visibly depleting knife into a raised heel and broken, thin streaks. The same transfer mask shapes the photo relief. Touch and mouse checks covered a curved scrape, a single dab, cancellation, stacked food, breadless saves, undo and a low-angle photo.

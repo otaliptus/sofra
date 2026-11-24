@@ -29,7 +29,12 @@ export const ingredients = [
     ['pepper','Sivri biber','Green pepper',.41,.027],['pepper-ring','Biber halkası','Pepper ring',.112,.026],
     ['fried-egg','Sahanda yumurta','Fried egg',.55,.066],
     ['parsley','Maydanoz','Parsley',.24,.006],
-    ['pastirma','Pastırma','Cured beef',.44,.013]
+    ['pastirma','Pastırma','Cured beef',.44,.013],
+    ['avokado','Avokado dilimi','Avocado slice',.37,.042],
+    ['yogurt','Süzme yoğurt','Strained yoghurt',.34,.061],
+    ['muz','Muz dilimi','Banana slice',.19,.031],
+    ['cikolata','Bitter çikolata','Dark chocolate chunk',.18,.034],
+    ['cilek','Çilek dilimi','Strawberry slice',.23,.028]
   ].map(([id,name,en,size,depth])=>({id,name,en,size,depth,kind:'topping'})),
   ...[
     ['cay','Çay'],['ayran','Kapalı ayran','lid'],
@@ -39,7 +44,7 @@ export const ingredients = [
   ].map(([id,name,opening])=>({id,name,kind:'topping',drink:true,opening})),
   ...[
     ['pul-biber','Pul biber','spice'],['karabiber','Karabiber','spice'],
-    ['kekik','Kekik','spice'],['nane','Nane','spice'],
+    ['chia','Chia tohumu','spice'],['kekik','Kekik','spice'],['nane','Nane','spice'],
     ['ketcap','Ketçap','sauce'],['mayonez','Mayonez','sauce']
   ].map(([id,name,kind])=>({id,name,kind})),
   ...Object.entries(breads).map(([bread,spec])=>({
@@ -61,7 +66,9 @@ export const wholeCuts={
   'black-olive':{ring:'black-ring',thin:4,regular:3,thick:2},
   'green-olive':{ring:'green-ring',thin:4,regular:3,thick:2}
 };
-const slices=new Set(['pepper-ring','black-ring','green-ring','tomato','cucumber','sausage','onion','red-onion','egg-slice','kasar','white-cheese','pastirma']);
+// Distance is in table units, where a whole bread is one unit wide.
+export const pasteRemaining=(food,distance)=>Math.exp(-distance/(food==='biber-salcasi'?.33:.395));
+const slices=new Set(['pepper-ring','black-ring','green-ring','tomato','cucumber','sausage','onion','red-onion','egg-slice','avokado','muz','cilek','kasar','white-cheese','pastirma']);
 export const canSlice=food=>Object.hasOwn(wholeCuts,food)||slices.has(food);
 export const canMirror=food=>food==='pepper'||food==='pepper-ring';
 export const localX=(piece,x)=>piece.mirrored?-x:x;
@@ -121,10 +128,10 @@ export function readRecipe(r) {
   const coverPose=boundedCoverPose(r.coverPose),photoCoverPose=boundedCoverPose(r.photoCoverPose);
   const validCover=typeof r.photoCover==='string'&&Object.hasOwn(photoCovers,r.photoCover)&&(r.photoCover!=='custom'||photoCoverPose||coverPose);
   const cover=r.coverRemoved===true?{coverRemoved:true}:{
-    closed:r.bread==='tas-ekmek'&&r.closed===true,
+    closed:r.baseRemoved!==true&&r.bread==='tas-ekmek'&&r.closed===true,
     ...(coverPose?{coverPose}:{}),...(photoCoverPose?{photoCoverPose}:{}),...(validCover?{photoCover:r.photoCover}:{})
   };
-  return {...emptyRecipe(r.bread,cloth),...cover,strokes:marks(r.strokes),pieces:r.pieces.map(p=>{
+  return {...emptyRecipe(r.bread,cloth),...cover,...(r.baseRemoved===true?{baseRemoved:true}:{}),strokes:r.baseRemoved===true?[]:marks(r.strokes),pieces:r.pieces.map(p=>{
     const dem=clamp(Math.floor(Number(p.dem)||0),0,10);
     const loose=pantry[p.food].bread||pantry[p.food].drink;
     const xLimit=loose?1.6:1.3,zLimit=loose?1.6:.8;

@@ -1,5 +1,5 @@
 import * as THREE from './node_modules/three/build/three.module.js';
-import { clamp, pantry } from './recipe.js?v=gazete';
+import { clamp, pantry, pasteRemaining } from './recipe.js?v=gazete';
 
 const flakes={
   'pul-biber':{colors:['#7f2110','#ad3216','#cc4922','#e19b37'],size:4.3,stretch:.63,count:14},
@@ -24,6 +24,7 @@ function alongPath(points,spacing,visit){
   }
   if(!traveled)visit(points[0][0],points[0][1],-.28,0);
 }
+const chia={size:2.75,stretch:.62,count:20,colors:['#353130','#514b44','#817669','#c7bdac','#a29a8b']};
 function scatter(ctx,spec,points,unit,random){
   alongPath(points,22*unit,(x,y)=>{
     for(let i=0;i<spec.count;i++){
@@ -31,6 +32,12 @@ function scatter(ctx,spec,points,unit,random){
       const px=x+Math.cos(a)*r,py=y+Math.sin(a)*r*.83;
       const size=spec.size*unit*(.45+random()),tilt=random()*Math.PI;
       ctx.save();ctx.translate(px,py);ctx.rotate(tilt);ctx.scale(size,size*spec.stretch);
+      if(spec===chia){
+        ctx.fillStyle=spec.colors[Math.floor(random()*spec.colors.length)];
+        ctx.beginPath();ctx.ellipse(0,0,1,1,0,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#ddd4bd9c';ctx.fillRect(-.52,-.5,.4,.28);ctx.fillRect(.18,.12,.26,.48);
+        ctx.restore();continue;
+      }
       ctx.beginPath();ctx.moveTo(-1,0);ctx.lineTo(-.45,-.82);ctx.lineTo(.62,-.94);ctx.lineTo(1,.17);ctx.lineTo(.22,1);ctx.lineTo(-.72,.63);ctx.closePath();
       ctx.fillStyle=spec.colors[Math.floor(random()*spec.colors.length)];ctx.fill();
       ctx.fillStyle='#ffefb076';ctx.fillRect(-.52,-.55,.63,.24);ctx.restore();
@@ -73,18 +80,33 @@ function canvas(w,h){
   const surface=document.createElement('canvas');surface.width=w;surface.height=h;return surface;
 }
 
-// Use the same knife ridges for the colour and height of the salça. The loaded
-// end stands proud of the bread and the scraped end thins to the crumb.
-function pasteRelief(image){
-  const surface=canvas(150,Math.round(150*image.height/image.width)),ctx=surface.getContext('2d');
-  ctx.drawImage(image,0,0,surface.width,surface.height);
-  const pixels=ctx.getImageData(0,0,surface.width,surface.height);
-  for(let y=0;y<surface.height;y++)for(let x=0;x<surface.width;x++){
-    const i=(y*surface.width+x)*4,red=pixels.data[i];
-    pixels.data[i]=(23+red*.23)*(1-.76*x/(surface.width-1));
-    pixels.data[i+1]=pixels.data[i+2]=0;
+// Prepare a dry scrape from the photographed paste. Parallel knife tracks
+// break into patches as the blade runs out. Their holes also cut the relief.
+function preparePaste(image,pepper){
+  const width=420,height=Math.round(width*image.height/image.width);
+  const color=canvas(width,height),relief=canvas(width,height);
+  const ctx=color.getContext('2d');ctx.drawImage(image,0,0,width,height);
+  const pixels=ctx.getImageData(0,0,width,height),heights=ctx.createImageData(width,height);
+  const rand=sampler(pepper?2731:941);
+  const grain=new Float32Array(64*64).map(()=>rand());
+  function noise(x,y){
+    const col=Math.floor(x),row=Math.floor(y),u=x-col,v=y-row;
+    const at=(i,j)=>grain[(j&63)*64+(i&63)];
+    return (1-v)*(at(col,row)*(1-u)+at(col+1,row)*u)+v*(at(col,row+1)*(1-u)+at(col+1,row+1)*u);
   }
-  ctx.putImageData(pixels,0,0);return surface;
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const i=(y*width+x)*4,t=x/(width-1),edge=Math.abs(2*y/height-1);
+    const track=y+2.7*Math.sin(x*.022+y*.046);
+    const texture=.47*noise(x/31,track/2.7)+.37*noise(x/17,track/11)+.16*noise(x/3,y/2);
+    const dry=Math.max(0,(t-.22)/.78);
+    const threshold=dry*(.71+.21*edge)+(pepper?.055:0);
+    const transfer=clamp((texture-threshold)*13+.34,0,1);
+    const alpha=Math.round(pixels.data[i+3]*transfer);
+    heights.data[i]=(24+pixels.data[i]*.34)*(1-.86*t)*(.68+.57*texture);
+    heights.data[i+3]=pixels.data[i+3]=alpha;
+  }
+  ctx.putImageData(pixels,0,0);relief.getContext('2d').putImageData(heights,0,0);
+  return {color,relief};
 }
 
 const serving = {
@@ -117,6 +139,39 @@ function trace(points,spacing) {
     path[i].a=Math.atan2(b.y-a.y,b.x-a.x);
   }
   return path;
+}
+
+// Measure the knife trail in table units. Deposited ridges stay in place as the
+// blade advances, with a short, thinning scrape beyond its contact edge.
+function spreadPaste(ctx,image,points,unit,mark){
+  const pepper=mark.food==='biber-salcasi',load=mark.load??1;
+  const path=trace(points,4*unit),end=path.at(-1),length=end.d/unit;
+  if(path.length===1)path[0].a=-.28;
+  const heel=22*load+7,tip=28,spacing=3;
+  let segment=0;
+  for(let d=-heel;d<length+tip;d+=spacing){
+    const at=d*unit;
+    while(segment+1<path.length-1&&path[segment+1].d<at)segment++;
+    const a=path[segment],b=path[segment+1]||a;
+    const f=b===a?0:clamp((at-a.d)/(b.d-a.d),0,1);
+    const angle=a.a+Math.atan2(Math.sin(b.a-a.a),Math.cos(b.a-a.a))*f;
+    const extra=Math.min(0,d)+Math.max(0,d-length);
+    const x=a.x+(b.x-a.x)*f+Math.cos(angle)*extra*unit;
+    const y=a.y+(b.y-a.y)*f+Math.sin(angle)*extra*unit;
+    const distance=Math.max(0,d),remaining=load*pasteRemaining(mark.food,distance/1000);
+    const body=.24+.74*(1-remaining);
+    // End caps use the piled heel and the feathered scrape of the actual photograph.
+    const u=d<0?body*(1+d/heel):body+(1-body)*clamp((d-length)/tip,0,1);
+    const press=1+.17*Math.sin(Math.min(1,distance/180)*Math.PI);
+    const width=(pepper?124:137)*unit*press*(.43+.57*Math.sqrt(remaining))*
+      (1+.035*Math.sin(distance*.06)+.018*Math.sin(distance*.16));
+    const sx=clamp(u*(image.width-2),0,image.width-2);
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    ctx.globalAlpha=Math.min(1,remaining*2.4+.09);
+    const band=spacing*unit;
+    ctx.drawImage(image,sx,0,Math.max(1,image.width*.009),image.height,-band*.58,-width/2,band*1.16,width);
+    ctx.restore();
+  }
 }
 
 function pipe(ctx,food,points,unit,amount,relief){
@@ -248,12 +303,11 @@ export function createCoating(ref,art){
     const unit=layer.width/(ref.width*1000),points=mark.line.map(([x,y])=>[x*layer.width/1024,y*layer.height/1024]);
     const [sx,sy]=mark.line[0],random=sampler(sx*16381+sy*97+mark.food.length*29);
     const kind=pantry[mark.food].kind;
-    if(kind==='spice'){if(!layer.relief)scatter(ctx,flakes[mark.food],points,unit,random);}
+    if(kind==='spice'){if(!layer.relief)scatter(ctx,mark.food==='chia'?chia:flakes[mark.food],points,unit,random);}
     else if(kind==='sauce')pipe(ctx,mark.food,points,unit,mark.portion??1,layer.relief);
     else if(pantry[mark.food].paste){
-      const image=art['smear-'+mark.food],key='relief-'+mark.food;
-      if(layer.relief&&!art[key])art[key]=pasteRelief(image);
-      knife(ctx,layer.relief?art[key]:image,points,unit*1.5,mark.load??1);
+      const paste=art['transfer-'+mark.food]??=preparePaste(art['smear-'+mark.food],mark.food==='biber-salcasi');
+      spreadPaste(ctx,layer.relief?paste.relief:paste.color,points,unit,mark);
     }else serve(ctx,art,mark,points,unit,random,layer.relief);
   }
   function deposit(ctx,layer,mark){

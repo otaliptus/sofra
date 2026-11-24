@@ -62,3 +62,16 @@ test('all four shelf halves follow the condiments and round-trip with their own 
   assert.deepEqual(shared.pieces,pieces);
   assert.equal(shared.coverRemoved,true);
 });
+
+test('an open plate can keep its upper half, toppings and their seasoning when shared', () => {
+  const chia = {food:'chia', line:[[512,512]]};
+  const yoghurt = {food:'yogurt', x:.2, z:0, a:0, dem:0, water:0, marks:[chia]};
+  const recipe = {...emptyRecipe('tas-ekmek'), baseRemoved:true, closed:true, strokes:[chia], pieces:[yoghurt]};
+  const shared = recipeFromHash('#simit=' + btoa(JSON.stringify(recipe)));
+  assert.ok(shared.baseRemoved);
+  assert.equal(shared.closed, false);
+  assert.equal(tableCoverFor(shared), 'side');
+  assert.deepEqual(shared.strokes, []);
+  assert.deepEqual(shared.pieces, [yoghurt]);
+  assert.equal(tableCoverFor(readRecipe({...recipe, coverRemoved:true})), 'open');
+});

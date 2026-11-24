@@ -186,6 +186,9 @@ dialog p,dialog li {font-size:14px;font-weight:400;line-height:1.5;} dialog ul {
 #put-down b { font:19px/1 sans-serif; }
 .food[aria-pressed="true"]::after { content:""; position:absolute; bottom:5px; width:28px; height:3px; border-radius:2px; background:#e8c187; }
 #knife[data-ingredient="jam"],#knife[data-ingredient="menemen"] { transform-origin:15% 50%; transform:translate(-15%,-50%) rotate(var(--tilt,-24deg)); }
+#knife[data-ingredient$="-salcasi"] { transition:transform 90ms ease-out,filter 110ms ease; }
+#knife[data-ingredient$="-salcasi"].pressing { transform:translate(-8%,-50%) rotate(var(--tilt,-17deg)) scaleY(.78); filter:drop-shadow(1px 1px 1px #30190860); }
+#knife[data-ingredient$="-salcasi"] #knife-load { transform-origin:15% 66%; transform:scale(var(--paste-load,1)); opacity:calc(.35 + .65 * var(--paste-load,1)); }
 #knife[data-tool="sauce"] { opacity:1; width:clamp(64px,11dvh,105px); transform:translate(-2%,-50%) rotate(-42deg); transform-origin:2% 50%; }
 #scene[data-cursor="sauce"] { cursor:none; }
 @media(max-width:600px) {

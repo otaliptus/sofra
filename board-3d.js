@@ -83,7 +83,7 @@ function sideGeometry(mask,width,height,depth,bread,topY,crown){
   geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   return geo;
 }
-function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,cutFace=null,ring=false}={}){
+function makeFood(image,width,depth,{crust=null,dome=false,rounded=false,egg=false,flex=false,cutFace=null,ring=false}={}){
   const height=width*image.height/image.width,mask=outline(image,ring?384:120),group=new THREE.Group();
   // Fit a smooth dome to the orange yolk. The white gleam in its photograph
   // is a reflection, so it must never become a depression in the mesh.
@@ -102,7 +102,7 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
     }
   }
   const shell=ring&&simitRing(mask,width,height,depth,!!cutFace);
-  const capHeight=shell?.topY||(cutFace&&crownHeight(mask,depth));
+  const capHeight=shell?.topY||((cutFace||rounded)&&crownHeight(mask,depth));
   function topY(u,v){
     if(capHeight)return capHeight(u,v);
     if(dome)return depth*(.14+.86*Math.sqrt(Math.max(0,1-4*((u-.5)**2+(v-.5)**2))));
@@ -110,7 +110,7 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
     const r=((u-yolk.x)/yolk.rx)**2+((v-yolk.y)/yolk.ry)**2;
     return depth*(.16+.84*Math.exp(-1.22*r*r));
   }
-  const segments=cutFace?64:dome||flex||egg?32:1,map=texture(image);
+  const segments=cutFace||rounded?64:dome||flex||egg?32:1,map=texture(image);
   const geom=shell?shell.top:new THREE.PlaneGeometry(width,height,segments,segments);
   if(!shell){
     geom.rotateX(-Math.PI/2);const points=geom.attributes.position;
@@ -222,7 +222,7 @@ export async function createBoard(canvas){
       const b=breads[item.bread],ring=item.bread==='simit';
       blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[item.bread],cutFace:art[b.asset],ring,flex:ring});
     }else blanks[id]=makeFood(art[item.asset||id],item.size,item.depth,{
-      dome:id.endsWith('-olive'),egg:id==='fried-egg'||id==='egg-slice',
+      dome:id.endsWith('-olive'),rounded:id==='avokado'||id==='yogurt',egg:id==='fried-egg'||id==='egg-slice',
       flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(id)
     });
     return blanks[id];
@@ -278,7 +278,7 @@ export async function createBoard(canvas){
         for(const x of [min[0],max[0]])for(const z of [min[2],max[2]])add(x,max[1],z);
       }
     }
-    sample(bread,bread.group);
+    if(bread.group.visible)sample(bread,bread.group);
     recipe.pieces.forEach((p,i)=>{
       if(!pantry[p.food].bread||recipe.photoCover||Math.hypot(p.x,p.z)<=plateRadius)sample(modelFor(p),nodes[i]);
     });
@@ -368,8 +368,8 @@ export async function createBoard(canvas){
   }
   function pick(clientX,clientY,relief=true){
     setRay(clientX,clientY);
-    const faces=[bread.top],indices=new Map([[bread.top,-1]]);
-    if(relief&&bread.coating?.mesh.visible){faces.push(bread.coating.mesh);indices.set(bread.coating.mesh,-1);}
+    const faces=bread.group.visible?[bread.top]:[],indices=new Map([[bread.top,-1]]);
+    if(bread.group.visible&&relief&&bread.coating?.mesh.visible){faces.push(bread.coating.mesh);indices.set(bread.coating.mesh,-1);}
     nodes.forEach((node,i)=>{
       const id=recipe.pieces[i].food;
       const parts=id==='cay'?[node.getObjectByName('saucer'),node.getObjectByName('glass')]:[];
@@ -395,7 +395,7 @@ export async function createBoard(canvas){
   function screen(x,y,z){
     const p=new THREE.Vector3(x,y,z).project(camera);return {x:(p.x+1)*.5*canvas.clientWidth,y:(1-p.y)*.5*canvas.clientHeight};
   }
-  function hasBread(x,z){return bread.mask.alpha(x/bread.width+.5,z/bread.height+.5)>.48;}
+  function hasBread(x,z){return bread.group.visible&&bread.mask.alpha(x/bread.width+.5,z/bread.height+.5)>.48;}
   function heightAt(x,z,count,exclude){
     let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
     for(let i=0;i<count;i++){
@@ -591,18 +591,19 @@ export async function createBoard(canvas){
       if(i>=0)position(nodes[i],piece,heights[i]);
     }
     landing.clear();recipe=r;setCloth(r.cloth);activateBread(r.bread);
-    const marks=JSON.stringify(r.strokes);
+    bread.group.visible=!r.baseRemoved;
+    const base=bread.group.visible?bread:null,marks=JSON.stringify(r.strokes);
     let keep=0;
     // Support depends only on the bread and the pieces below this one. Keep
     // that prefix, including its deformed meshes and their GPU buffers.
-    if(supportBread===bread&&breadMarks===marks){
+    if(supportBread===base&&breadMarks===marks){
       while(keep<placed.length&&keep<r.pieces.length){
         const entry=placed[keep],p=r.pieces[keep];
         if(entry.piece!==p||(settle&&!entry.stable)||entry.state!==JSON.stringify(p))break;
         keep++;
       }
     }
-    supportBread=bread;breadMarks=marks;
+    supportBread=base;breadMarks=marks;
     for(let i=keep;i<nodes.length;i++){
       const n=nodes[i];
       scene.remove(n);
@@ -753,11 +754,29 @@ export async function createBoard(canvas){
     landingSpot(n){
       for(let k=0;k<32;k++){
         const angle=(n+k)*2.39996+.25,x=.29*Math.cos(angle),z=.27*Math.sin(angle);
-        if(hasBread(x,z)&&!covers(x,z))return {x,z};
+        if((recipe.baseRemoved||hasBread(x,z))&&!covers(x,z))return {x,z};
       }
       return null;
     },
-    breadUV(x,z){return {i:-1,u:x/bread.width+.5,v:z/bread.height+.5,x,z};},
+    servingSpot(n){
+      if(!recipe.baseRemoved){
+        const spot=this.landingSpot(n);
+        return spot&&{i:-1,u:spot.x/bread.width+.5,v:spot.z/bread.height+.5,...spot};
+      }
+      const b=canvas.getBoundingClientRect();
+      for(let i=0;i<recipe.pieces.length;i++){
+        const index=(n+i)%recipe.pieces.length,p=recipe.pieces[index],ref=modelFor(p);
+        if(pantry[p.food].drink)continue;
+        const [lx,lz]=ref.contacts[Math.floor(ref.contacts.length/2)]||[0,0];
+        const c=Math.cos(p.a),s=Math.sin(p.a),x=p.x+localX(p,lx)*c+lz*s,z=p.z-localX(p,lx)*s+lz*c;
+        const pos=screen(x,heightAt(x,z,recipe.pieces.length),z);
+        if(!pickCover(b.left+pos.x,b.top+pos.y)){
+          const hit=pick(b.left+pos.x,b.top+pos.y,false);
+          if(hit&&!pantry[recipe.pieces[hit.i]?.food]?.drink)return hit;
+        }
+      }
+      return null;
+    },
     land(p){landing.set(p,clock);run();},
 
     handle(i){
