@@ -1,8 +1,8 @@
 import { editHistory } from './undo-history.js';
 import { mountMusic, musicCredits } from './music.js?v=playback-history';
-import { createBoard, cameraNames } from './board-3d.js?v=shelf-halves';
+import { createBoard, cameraNames } from './board-3d.js?v=drinks';
 import { mountShelf } from './shelf.js?v=shelf-halves';
-import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=shelf-halves';
+import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=drinks';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
@@ -67,6 +67,7 @@ function hint(message,duration=2600){
   clearTimeout(noticeTimer);const node=$('#coach');node.textContent=message;node.hidden=!message;
   if(message&&duration)noticeTimer=setTimeout(()=>node.hidden=true,duration);
 }
+function movablePiece(i){return !!recipe.pieces[i]&&(!recipe.closed||pantry[recipe.pieces[i].food].drink);}
 function showHandle(){
   const editing=mode==='edit'&&!gesture,cover=mode==='camera'||selected===coverSelection;
   const p=cover?board?.coverHandle():board?.handle(selected);
@@ -75,7 +76,7 @@ function showHandle(){
   turn.setAttribute('aria-label',cover?'Üst parçayı döndür':'Malzemeyi döndür');
   if(!turn.hidden){turn.style.left=p.x+'px';turn.style.top=p.y+'px';}
   const markedBread=selected===breadSelection&&recipe.strokes.length>0;
-  pieceAction.hidden=!editing||(recipe.closed&&!cover)||(!p&&!markedBread);
+  pieceAction.hidden=!editing||(recipe.closed&&!cover&&!movablePiece(selected))||(!p&&!markedBread);
   if(!pieceAction.hidden){
     const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:pantry[recipe.pieces[selected].food].name;
     pieceAction.setAttribute('aria-label',name+' · Kaldır');
@@ -138,13 +139,13 @@ function removeSelected(){
     checkpoint();recipe.coverRemoved=true;recipe.closed=false;
     delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
   }else{
-    if(recipe.closed||!recipe.pieces[selected])return;
+    if(!movablePiece(selected))return;
     checkpoint();recipe.pieces.splice(selected,1);
   }
   selected=-1;chooseBrush(null);update(!cover);
 }
 function removalChoices(){
-  if(gesture||mode!=='edit'||(recipe.closed&&selected!==coverSelection))return;
+  if(gesture||mode!=='edit'||(recipe.closed&&selected!==coverSelection&&!movablePiece(selected)))return;
   const piece=recipe.pieces[selected],marks=selected===breadSelection?recipe.strokes:piece?.marks;
   if(!marks?.length){removeSelected();canvas.focus({preventScroll:true});return;}
   const foods=[...new Set(marks.map(mark=>mark.food).reverse())];
@@ -203,7 +204,7 @@ function chooseBrush(food){
 $('#put-down').onclick=()=>{if(gesture)return;chooseBrush(null);canvas.focus({preventScroll:true});};
 function makePiece(food,x,z){return {food,x:round(x),z:round(z),a:0,dem:0,water:0};}
 function releasePiece(p,previous=-1){
-  if(pantry[p.food].bread){p.x=clamp(p.x,-1.6,1.6);p.z=clamp(p.z,-1.6,1.6);}
+  if(pantry[p.food].bread||pantry[p.food].drink){p.x=clamp(p.x,-1.6,1.6);p.z=clamp(p.z,-1.6,1.6);}
   const support=board.support(p,recipe.pieces.length,previous);
   if(previous<0 && !support.stable){board.slip(p);hint('Kaydı!',1000);return;}
   if(previous<0 && recipe.pieces.length>=80){hint('Tabak dolu.');return;}
@@ -217,12 +218,16 @@ function moveCoverHint(){hint('Üst parçayı yana çekip içini doldur.');}
 function pickFood(id,x,z){
   if(!board||gesture)return;
   if(mode==='camera'){leaveCamera();return;}
-  if(recipe.closed){hint('Önce sandviçi aç.');return;}
+  if(recipe.closed&&!pantry[id].drink){hint('Önce sandviçi aç.');return;}
   if(isTool(id)){chooseBrush(brush===id?null:id);return;}
   chooseBrush(null);
   if(x===undefined){
     if(pantry[id].bread){x=0;z=0;}
-    else if(id==='cay'){x=.48;z=.32;}
+    else if(pantry[id].drink){
+      const spot=board.drinkSpot(id);
+      if(!spot){hint('İçeceği raftan sofraya sürükle.');return;}
+      ({x,z}=spot);
+    }
     else{
       const spot=board.landingSpot(recipe.pieces.length);
       if(!spot){moveCoverHint();return;}
@@ -248,7 +253,8 @@ const resetShelf=mountShelf(stage,pickFood,(food,x,y)=>{
     chooseBrush(food);if(edible(hit))placeServing(hit);
   }else{const p=shelfPoint(x,y);pickFood(food,p.x,p.z);}
 },ingredients,(food,x,y)=>{
-  if(!board||mode!=='edit'||recipe.closed)return;
+  if(!board||mode!=='edit')return;
+  if(food&&recipe.closed&&!pantry[food].drink){board.lift(null);return false;}
   if(food&&pantry[food].kind==='topping'){
     const box=stage.getBoundingClientRect();
     if(board.pickCover(box.left+x,box.top+y)){board.lift(null);return false;}
@@ -265,7 +271,7 @@ function moveKnife(e){
   if(gesture?.kind==='ink')gesture.lastScreen=[e.clientX,e.clientY];
   knife.style.left=(e.clientX-r.left)+'px';knife.style.top=(e.clientY-r.top)+'px';knife.hidden=false;
 }
-function edible(hit){return hit && recipe.pieces[hit.i]?.food!=='cay';}
+function edible(hit){return hit&&!pantry[recipe.pieces[hit.i]?.food]?.drink;}
 function newMark(hit){
   const marks=hit.i===-1?recipe.strokes:(recipe.pieces[hit.i].marks||=[]);
   const mark={food:brush,line:[]};marks.push(mark);return mark;
@@ -315,7 +321,7 @@ function begin(e){
     }
   }
   const hit=mode==='edit'&&board.pick(e.clientX,e.clientY,!brush);
-  if(mode==='camera'||recipe.closed||e.button===2||!hit){
+  if(mode==='camera'||(recipe.closed&&!movablePiece(hit?.i))||e.button===2||!hit){
     gesture={kind:'orbit',id:e.pointerId,px:e.clientX,py:e.clientY,startX:e.clientX,startY:e.clientY,moved:false};canvas.dataset.cursor='held';knife.hidden=true;return;
   }
   if(brush){
@@ -467,7 +473,7 @@ canvas.addEventListener('wheel',e=>{
     twistCover(clamp(pixels*.002,-Math.PI/8,Math.PI/8),true);return;
   }
   if(mode==='camera')return;
-  const i=board.pick(e.clientX,e.clientY)?.i??-1;if(i<0||recipe.closed)return;
+  const i=board.pick(e.clientX,e.clientY)?.i??-1;if(!movablePiece(i))return;
   e.preventDefault();selected=i;const piece=recipe.pieces[i];checkpointWheel(piece);
   piece.a=round((piece.a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
 },{passive:false});
@@ -483,7 +489,7 @@ function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){
     board.sync(recipe);
-    const solids=ingredients.filter(f=>f.kind==='topping'&&f.id!=='cay'&&!f.bread),count=3+Math.floor(Math.random()*6);
+    const solids=ingredients.filter(f=>f.kind==='topping'&&!f.drink&&!f.bread),count=3+Math.floor(Math.random()*6);
     for(let i=0;i<count;i++){
       const pos=board.landingSpot(i),item=solids[Math.floor(Math.random()*solids.length)];
       recipe.pieces.push({...makePiece(item.id,pos.x,pos.z),a:round(Math.random()*6.28)});
@@ -598,7 +604,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return;}
   if(e.key==='Escape'){if(mode==='camera')leaveCamera();else{chooseBrush(null);selected=-1;showHandle();}return;}
   if(mode==='edit'&&e.target===canvas&&['[',']'].includes(e.key)){
-    const choices=recipe.closed?[]:recipe.pieces.map((_,i)=>i);
+    const choices=recipe.pieces.map((_,i)=>i).filter(movablePiece);
     if(!recipe.coverRemoved)choices.push(coverSelection);
     if(!choices.length)return;
     const i=choices.indexOf(selected),step=e.key==='['?-1:1;
@@ -623,7 +629,7 @@ document.addEventListener('keydown',e=>{
     return;
   }
 
-  if(e.target!==canvas||recipe.closed)return;
+  if(e.target!==canvas||(recipe.closed&&!movablePiece(selected)))return;
   if(brush&&['Enter',' '].includes(e.key)){
     e.preventDefault();const spot=board.landingSpot(recipe.strokes.length);
     if(spot)placeServing(board.breadUV(spot.x,spot.z));else moveCoverHint();return;

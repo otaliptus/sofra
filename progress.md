@@ -87,3 +87,7 @@ Restored the workbench camera's original plate-centred pivot, overhead direction
 Compared the live camera matrices from the pre-halves build and the fix at desktop, tablet and phone sizes. Plate centre and scale stay fixed through orbit, placement and undo. All four default photo presets matched the former lens and position. Browser checks exercised top-half removal, persisted drafts, 960px export, album remixing, keyboard deletion and restoring a closed sandwich.
 
 The food shelf ends with the simit, poğaça, açma and taş ekmek tops. Tapping serves a half on the bread and dragging places it on the plate or cloth. Extra halves use the existing crusts and cut faces and keep individual positions, rotation and coatings. Picking a removed matching top restores its photo controls. Browser checks covered all four shelf items on desktop and touch, undo, reload and 960px photo export.
+
+Added sealed ayran, orange, sour cherry and apricot juice boxes, filter coffee and Turkish coffee beside çay on the shelf. The six shelf cutouts were rendered from the playable models with original generated paper labels, printed foil, İznik ornament and two coffee surfaces. Beverages sit upright, find separate serving spots on tap, and can be placed beside an already closed sandwich.
+
+Exercised each drink in desktop and touch Chromium, including picking its 3D surface, rotating, removing and undoing, topping exclusion, storage, album remixing, tea service and square photo export. The bread halves remain the last four items on the shelf.

@@ -27,9 +27,13 @@ export const ingredients = [
     ['pepper','Sivri biber','Green pepper',.41,.027],
     ['fried-egg','Sahanda yumurta','Fried egg',.55,.066],
     ['parsley','Maydanoz','Parsley',.24,.006],
-    ['pastirma','Pastırma','Cured beef',.44,.013],
-    ['cay','Çay','Tea glass and saucer',.34,.018]
+    ['pastirma','Pastırma','Cured beef',.44,.013]
   ].map(([id,name,en,size,depth])=>({id,name,en,size,depth,kind:'topping'})),
+  ...[
+    ['cay','Çay'],['ayran','Kapalı ayran'],
+    ['portakal-suyu','Portakal suyu'],['visne-suyu','Vişne suyu'],['kayisi-suyu','Kayısı suyu'],
+    ['kahve','Filtre kahve'],['turk-kahvesi','Türk kahvesi']
+  ].map(([id,name])=>({id,name,kind:'topping',drink:true})),
   ...[
     ['pul-biber','Pul biber','spice'],['karabiber','Karabiber','spice'],
     ['kekik','Kekik','spice'],['nane','Nane','spice'],
@@ -73,9 +77,10 @@ export function readRecipe(r) {
   };
   return {...emptyRecipe(r.bread,cloth),...cover,strokes:marks(r.strokes),pieces:r.pieces.map(p=>{
     const dem=clamp(Math.floor(Number(p.dem)||0),0,10);
-    const xLimit=pantry[p.food].bread?1.6:1.3,zLimit=pantry[p.food].bread?1.6:.8;
+    const loose=pantry[p.food].bread||pantry[p.food].drink;
+    const xLimit=loose?1.6:1.3,zLimit=loose?1.6:.8;
     return {food:p.food,x:round(clamp(p.x,-xLimit,xLimit)),z:round(clamp(p.z,-zLimit,zLimit)),a:round(p.a%(Math.PI*2)),dem,
-      water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(p.marks?.length?{marks:marks(p.marks)}:{})};
+      water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(!pantry[p.food].drink&&p.marks?.length?{marks:marks(p.marks)}:{})};
   })};
 }
 export function recipeFromHash(hash) {

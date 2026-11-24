@@ -1,11 +1,12 @@
 import * as THREE from './node_modules/three/build/three.module.js';
 import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
+import { createDrinks } from './drinks.js';
 import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, pantry, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=shelf-halves';
+import { breads, cloths, ingredients, pantry, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=drinks';
 import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=plate-camera';
 
@@ -162,8 +163,8 @@ export async function createBoard(canvas){
   Object.assign(sun.shadow.camera,{left:-1.8,right:1.8,top:1.8,bottom:-1.8,near:.1,far:12});sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.00014;sun.shadow.normalBias=.0005;sun.shadow.radius=2.5;
   scene.add(sun,new THREE.AmbientLight(0xffffff,1.55));
-  const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
-    ...ingredients.filter(f=>f.kind==='topping').map(f=>f.asset||f.id),'smear-cream','smear-jam','servings','serving-relief']);
+  const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','drink-art','cay','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
+    ...ingredients.filter(f=>f.kind==='topping'&&!f.drink).map(f=>f.asset||f.id),'smear-cream','smear-jam','servings','serving-relief']);
   const art=Object.fromEntries(await Promise.all(Array.from(ids).map(async id=>[id,await loadImage(id)])));
   teaImages.cay=art.cay;
 
@@ -186,8 +187,8 @@ export async function createBoard(canvas){
     bread=loafCache.get(id);breadId=id;bread.group.visible=true;
   }
   activateBread();
-  const blanks={cay:createTeaService(renderer,art['tea-saucer'])};
-  for(const item of ingredients.filter(f=>f.kind==='topping'&&f.id!=='cay'&&!f.bread)){
+  const blanks={cay:createTeaService(renderer,art['tea-saucer']),...createDrinks(art['drink-art'])};
+  for(const item of ingredients.filter(f=>f.kind==='topping'&&!f.drink&&!f.bread)){
     blanks[item.id]=makeFood(art[item.asset||item.id],item.size,item.depth,{
       dome:item.id.endsWith('-olive'),egg:item.id==='fried-egg'||item.id==='egg-slice',
       flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(item.id)
@@ -260,10 +261,10 @@ export async function createBoard(canvas){
     canvas.parentElement.style.setProperty('--frame',framePixels+'px');cameraPosition();
   }
   function photoPose(id){
-    const pose=presetPose(id),tea=recipe.pieces.find(p=>p.food==='cay');
-    if(!tea||!['low','corner'].includes(id)||Math.hypot(tea.x,tea.z)<.30)return pose;
-    // Keep the tall glass behind and beside the bread in the two lower shots.
-    const direction=Math.atan2(tea.x,tea.z);
+    const pose=presetPose(id),drink=recipe.pieces.find(p=>p.food==='cay')||recipe.pieces.find(p=>pantry[p.food].drink);
+    if(!drink||!['low','corner'].includes(id)||Math.hypot(drink.x,drink.z)<.30)return pose;
+    // Keep the tall drink behind and beside the bread in the two lower shots.
+    const direction=Math.atan2(drink.x,drink.z);
     const candidates=[pose.yaw,-pose.yaw,Math.PI+pose.yaw,Math.PI-pose.yaw];
     function cost(yaw){
       const separation=direction-yaw;
@@ -314,7 +315,8 @@ export async function createBoard(canvas){
     const faces=[bread.top],indices=new Map([[bread.top,-1]]);
     if(relief&&bread.coating?.mesh.visible){faces.push(bread.coating.mesh);indices.set(bread.coating.mesh,-1);}
     nodes.forEach((node,i)=>{
-      const parts=recipe.pieces[i].food==='cay'?[node.getObjectByName('saucer'),node.getObjectByName('glass')]:[node.children[0]];
+      const id=recipe.pieces[i].food;
+      const parts=id==='cay'?[node.getObjectByName('saucer'),node.getObjectByName('glass')]:pantry[id].drink?node.children:[node.children[0]];
       const coating=coatings.get(recipe.pieces[i]);
       if(relief&&coating?.mesh.visible)parts.push(coating.mesh);
       for(const face of parts){faces.push(face);indices.set(face,i);}
@@ -325,7 +327,7 @@ export async function createBoard(canvas){
       const ref=index<0?bread:foodModel(recipe.pieces[index].food),u=h.uv.x,v=1-h.uv.y;
       const coat=index<0?bread.coating:coatings.get(recipe.pieces[index]);
       if(coat?.mesh===h.object&&coat.rise(u,v)<.0005)continue;
-      if(ref!==blanks.cay&&ref.mask.alpha(u,v)<.49)continue;
+      if(!pantry[recipe.pieces[index]?.food]?.drink&&ref.mask.alpha(u,v)<.49)continue;
       return {i:index,u,v,x:h.point.x,z:h.point.z,y:h.point.y,distance:h.distance};
     }
     return null;
@@ -350,8 +352,8 @@ export async function createBoard(canvas){
     const ref=foodModel(p.food),cs=Math.cos(p.a),sn=Math.sin(p.a);
     const samples=ref.contacts.map(([a,b])=>heightAt(p.x+a*cs+b*sn,p.z-a*sn+b*cs,count,exclude));
     const good=samples.filter(v=>v>=0),max=Math.max(...samples);
-    const stable=!!pantry[p.food].bread||p.food==='cay'||good.length>=Math.max(1,samples.length*.28);
-    if(!fit||ref.flex||p.food==='cay'||max-Math.min(...samples)<.003)return {stable,height:max+.001};
+    const stable=!!pantry[p.food].bread||pantry[p.food].drink||good.length>=Math.max(1,samples.length*.28);
+    if(!fit||ref.flex||pantry[p.food].drink||max-Math.min(...samples)<.003)return {stable,height:max+.001};
     const plane=restingPlane(ref.contacts,samples,.42);
     return {stable,height:plane.height+.001,offset:(x,z)=>plane.sx*x+plane.sz*z};
   }
@@ -627,6 +629,16 @@ export async function createBoard(canvas){
     changeCloth(id){setCloth(id);render();},
     pose(){return {...orbit};},hasEditPose(){return !!editPose;},
     resetOrbit(){editPose=null;setView(view?'tilt':null);},
+    drinkSpot(id){
+      const radius=foodModel(id).width/2;
+      for(const ring of [Math.hypot(.48,.32),.77,.95]){
+        for(let i=0;i<16;i++){
+          const angle=Math.atan2(.32,.48)+i*Math.PI/8,x=ring*Math.cos(angle),z=ring*Math.sin(angle);
+          if(!covers(x,z)&&recipe.pieces.every(p=>Math.hypot(x-p.x,z-p.z)>radius+foodModel(p.food).width/2+.025))return {x,z};
+        }
+      }
+      return null;
+    },
     landingSpot(n){
       for(let k=0;k<32;k++){
         const angle=(n+k)*2.39996+.25,x=.29*Math.cos(angle),z=.27*Math.sin(angle);
@@ -641,7 +653,7 @@ export async function createBoard(canvas){
       const p=recipe.pieces[i];if(!p)return null;
       const ref=foodModel(p.food),edge=ref.width*.5,height=heights[i]+ref.depth+(offsets[i]?.(edge,0)||0);
       const at=screen(p.x+Math.cos(p.a)*edge,height,p.z-Math.sin(p.a)*edge);
-      if(pantry[p.food].bread){at.x=clamp(at.x,23,canvas.clientWidth-23);at.y=clamp(at.y,23,canvas.clientHeight-23);}
+      if(pantry[p.food].bread||pantry[p.food].drink){at.x=clamp(at.x,23,canvas.clientWidth-23);at.y=clamp(at.y,23,canvas.clientHeight-23);}
       return {...at,height};
     }
   };
