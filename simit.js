@@ -1,8 +1,9 @@
+import { serveDrink, serviceControls } from './drink-service.js';
 import { editHistory } from './undo-history.js';
 import { mountMusic, musicCredits } from './music.js?v=playback-history';
-import { createBoard, cameraNames } from './board-3d.js?v=drinks';
+import { createBoard, cameraNames } from './board-3d.js?v=peel';
 import { mountShelf } from './shelf.js?v=shelf-halves';
-import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=drinks';
+import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=peel';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
@@ -27,7 +28,7 @@ let board,selected=selectionFor(stored?.editSelection),brush=null,gesture=null,m
 const historyStack=editHistory(savedRecipe&&stored?.editHistory);
 if(shared){write(storeKey,JSON.stringify(recipe));history.replaceState(null,'',location.pathname+location.search);}
 const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
-let audioContext,noticeTimer,teaFrame=0,albumDB;
+let audioContext,noticeTimer,teaFrame=0,drinkService=null,albumDB;
 let wheelTurn=null;
 for(const [id,cloth] of Object.entries(cloths)){
   const button=document.createElement('button');
@@ -78,7 +79,8 @@ function showHandle(){
   const markedBread=selected===breadSelection&&recipe.strokes.length>0;
   pieceAction.hidden=!editing||(recipe.closed&&!cover&&!movablePiece(selected))||(!p&&!markedBread);
   if(!pieceAction.hidden){
-    const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:pantry[recipe.pieces[selected].food].name;
+    const piece=recipe.pieces[selected];
+    const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:piece.food==='ayran'&&piece.prepared?'Açık ayran':pantry[piece.food].name;
     pieceAction.setAttribute('aria-label',name+' · Kaldır');
   }
   undoAction.disabled=!historyStack.length;
@@ -239,7 +241,8 @@ function pickFood(id,x,z){
     checkpoint();delete recipe.coverRemoved;
     recipe.coverPose=boundedCoverPose({x,z,yaw:0});selected=coverSelection;update();clink(id);return;
   }
-  releasePiece(makePiece(id,x,z));
+  const piece=makePiece(id,x,z);releasePiece(piece);
+  if(recipe.pieces.includes(piece)&&pantry[id].opening)hint(id==='ayran'?'Kapağı soymak için ayrana dokun.':'Pipeti takmak için kutuya dokun.');
 }
 function shelfPoint(x,y){
   const b=stage.getBoundingClientRect();return board.pick(b.left+x,b.top+y)||board.xy(b.left+x,b.top+y);
@@ -398,7 +401,7 @@ function ended(e){
     if(e.type==='pointerup'&&g.moved){
       if(board.pickCover(e.clientX,e.clientY))moveCoverHint();else releasePiece(g.next,g.i);
     }
-    else if(e.type!=='pointercancel'&&g.from.food==='cay')openTea();
+    else if(e.type==='pointerup')openDrink();
   }
   showHandle();
 }
@@ -478,13 +481,15 @@ canvas.addEventListener('wheel',e=>{
   piece.a=round((piece.a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
 },{passive:false});
 function dialog(title,html){
+  endService();
   $('#sheet-content').innerHTML='<div class="dialog-head"><h2 id="dialog-title">'+title+'</h2><button class="close" aria-label="Kapat">×</button></div>'+html;
   sheet.setAttribute('aria-labelledby','dialog-title');if(!sheet.open)sheet.showModal();
   $('.close').onclick=()=>sheet.close();
 }
-sheet.addEventListener('close',()=>{cancelAnimationFrame(teaFrame);});
+function endService(){cancelAnimationFrame(teaFrame);drinkService?.close();drinkService=null;}
+sheet.addEventListener('close',()=>{if(!sheet.open)endService();});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
-$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Raftaki son dört ekmek yarısını da tabağa sürükleyebilirsin. Sofrada ve Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
+$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Sofradaki içeceğe dokun. Çayı doldur, ayranın folyosunu soy veya kutuya pipet tak.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Raftaki son dört ekmek yarısını da tabağa sürükleyebilirsin. Sofrada ve Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){
@@ -517,6 +522,15 @@ $('#fresh').onclick=()=>{
   for(const b of $('.bread-options').children)b.onclick=()=>startBreakfast(b.dataset.bread,recipe.cloth);
   $('#random').onclick=()=>startBreakfast(recipe.bread,recipe.cloth,true);
 };
+function openDrink(){
+  const piece=recipe.pieces[selected];if(!piece)return;
+  if(piece.food==='cay'){openTea();return;}
+  const {name,opening}=pantry[piece.food];if(!opening)return;
+  dialog(opening==='lid'?'Ayran':name,serviceControls);
+  drinkService=serveDrink(sheet,board.drinkService(piece.food),opening,!!piece.prepared,()=>{
+    checkpoint();piece.prepared=true;update();clink(opening==='lid'?'spread':'drop');
+  });
+}
 function openTea(){
   const p=recipe.pieces[selected];if(!p||p.food!=='cay')return;
   dialog('Çay doldur','<canvas id="glass" width="480" height="285" aria-label="Çay bardağı"></canvas><div class="tea-tools"><button id="dem"><img src="./assets/demlik.webp" alt="">Dem</button><button id="water"><img src="./assets/kettle.webp" alt="">Sıcak su</button></div><p class="readout"></p><div class="buttons"><button id="drain">Boşalt</button><button id="remove-glass">Bardağı kaldır</button><button class="primary" id="serve">Servis et</button></div>');
@@ -635,13 +649,13 @@ document.addEventListener('keydown',e=>{
     if(spot)placeServing(board.breadUV(spot.x,spot.z));else moveCoverHint();return;
   }
   const p=recipe.pieces[selected];if(!p)return;
-  if(e.key==='Enter'&&p.food==='cay'){e.preventDefault();openTea();return;}
+  if(e.key==='Enter'&&(p.food==='cay'||pantry[p.food].opening)){e.preventDefault();openDrink();return;}
   const dirs={ArrowLeft:[-.02,0],ArrowRight:[.02,0],ArrowUp:[0,-.02],ArrowDown:[0,.02]};
   if(dirs[e.key]){e.preventDefault();const [dx,dz]=dirs[e.key];releasePiece({...p,x:p.x+dx,z:p.z+dz},selected);}
   if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
 });
 new ResizeObserver(showHandle).observe(stage);
-window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,music:music.state(),camera:board?.pose(),coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
+window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
 window.advanceTime=ms=>board?.step(ms);
 try{
   board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;

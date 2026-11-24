@@ -91,3 +91,7 @@ The food shelf ends with the simit, poğaça, açma and taş ekmek tops. Tapping
 Added sealed ayran, orange, sour cherry and apricot juice boxes, filter coffee and Turkish coffee beside çay on the shelf. The six shelf cutouts were rendered from the playable models with original generated paper labels, printed foil, İznik ornament and two coffee surfaces. Beverages sit upright, find separate serving spots on tap, and can be placed beside an already closed sandwich.
 
 Exercised each drink in desktop and touch Chromium, including picking its 3D surface, rotating, removing and undoing, topping exclusion, storage, album remixing, tea service and square photo export. The bread halves remain the last four items on the shelf.
+
+A tap on ayran or a carton now opens a close-up of that serving. The ayran has a printed foil lid that bends under the pull tab and reveals the drink. The six cartons have striped bendy straws, side sleeves and marked foil ports. Added çilekli, çikolatalı and muzlu süt with original bakkal-style labels and shelf cutouts rendered from the playable models.
+
+Mouse and touch playthroughs exercised short and full peels, missed and successful insertions, interrupted gestures, and keyboard preparation. Each serving keeps its own opening state through undo, reload, sharing and album remixing. Photos frame the rolled foil and seated straws. Existing tea service still pours dem.

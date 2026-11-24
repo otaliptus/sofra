@@ -121,6 +121,15 @@ dialog p,dialog li {font-size:14px;font-weight:400;line-height:1.5;} dialog ul {
 .feedback {margin-bottom:0;overflow-wrap:anywhere;}.feedback:empty{display:none;}
 .tea-tools {display:flex;align-items:center;justify-content:center;gap:15px;}.tea-tools button img {display:block;width:80px;height:51px;object-fit:contain;margin:auto;}.tea-tools button{font-size:13px;}
 #glass {width:100%;height:150px;object-fit:contain;} .readout{text-align:center;}
+.drink-stage {position:relative;margin-top:12px;height:clamp(175px,39dvh,330px);overflow:hidden;touch-action:none;user-select:none;border-radius:2px;background:radial-gradient(ellipse at 45% 29%,#fff7e4,#e9dcc0);}
+.drink-stage canvas {display:block;width:100%;height:100%;}
+.drink-grip,.drink-target {position:absolute;pointer-events:none;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;border:1.5px dashed #503b27;box-shadow:0 0 0 2px #fff4dbad;}
+.drink-target {width:25px;height:25px;border:2px solid #86442f;background:#fff8dd40;}
+.drink-stage:not([data-ready=true]) {cursor:grab;}
+.drink-stage[data-dragging=true] {cursor:grabbing;}
+.drink-stage[data-dragging=true] .drink-grip {opacity:0;}
+.drink-hint {text-align:center;margin:12px 0 0;}
+.drink-buttons {justify-content:center;}
 @media(max-width:680px){:root{--item:79px;}#game{grid-template-rows:47px minmax(0,1fr) auto;}nav{font-size:14px;}#nav-left{gap:13px;}.shutter-row{height:65px;}#shutter{min-width:74px;padding:6px 12px;}.food{padding:2px 3px 9px;}#views{position:static;gap:8px;}#views button{font-size:12px;}#game.camera .shutter-row{gap:15px;}#coach{top:10px;}#prev-food,#next-food{font-size:11px;max-width:30%;}.rail-end {text-align:center;}}
 @media(max-height:440px){:root{--item:58px;}#game{grid-template-rows:30px minmax(0,1fr) auto;}.shutter-row{height:42px;}#shutter{min-width:62px;padding:1px 10px;font-size:13px;}nav{font-size:13px;}#coach{padding:4px 9px;top:5px;}}
 
