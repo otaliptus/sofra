@@ -95,3 +95,7 @@ Exercised each drink in desktop and touch Chromium, including picking its 3D sur
 A tap on ayran or a carton now opens a close-up of that serving. The ayran has a printed foil lid that bends under the pull tab and reveals the drink. The six cartons have striped bendy straws, side sleeves and marked foil ports. Added çilekli, çikolatalı and muzlu süt with original bakkal-style labels and shelf cutouts rendered from the playable models.
 
 Mouse and touch playthroughs exercised short and full peels, missed and successful insertions, interrupted gestures, and keyboard preparation. Each serving keeps its own opening state through undo, reload, sharing and album remixing. Photos frame the rolled foil and seated straws. Existing tea service still pours dem.
+
+Ayran foil now holds its position when released and can be grabbed again from the exposed tab. A compact slider allows single-percent adjustments. Each cup carries its own peel amount through table movement, undo, saved breakfasts and photos. Existing half-open ayran loads at 50%. The last crimp stays at the back rim when the cup is fully open.
+
+Mouse and touch checks pulled a lid to 23%, continued to 72%, folded it back to 40%, and reached both endpoints. Verified cancelled edits, keyboard and slider adjustments, undo, draft reload, old shared recipes, a second differently opened cup, straw insertion and a 960px album photo.

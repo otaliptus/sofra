@@ -23,7 +23,7 @@ function vessel(group,perimeter,contacts,surface){
   const topY=(u,v)=>surface((u-.5)*width,(v-.5)*height);
   return {group,width,height,depth,perimeter,contacts,topY,mask:{alpha:(u,v)=>topY(u,v)>0?1:0}};
 }
-// The board shares two still poses. Only the close-up owns moving parts.
+// Only released positions are shared on the board. Drag previews use a separate rig.
 function openable(body,perimeter,contacts,surface,makeParts){
   function assemble(){
     const group=body.clone(),parts=new THREE.Group();group.add(parts);
@@ -32,15 +32,16 @@ function openable(body,perimeter,contacts,surface,makeParts){
     return {...rig,group,parts};
   }
   const sealed=assemble(),ref=vessel(sealed.group,perimeter,contacts,surface);
-  let opened,studio;
-  ref.forPrepared=prepared=>{
-    if(!prepared)return sealed.group;
-    if(!opened){
-      opened=assemble();opened.pose(1);
-      const bounds=new THREE.Box3().setFromObject(opened.parts,true);
-      opened.group.userData.openBounds=[bounds.min.toArray(),bounds.max.toArray()];
+  const poses=new Map([[0,sealed.group]]);
+  let studio;
+  ref.forOpening=percent=>{
+    if(!poses.has(percent)){
+      const still=assemble();still.pose(percent/100);
+      const bounds=new THREE.Box3().setFromObject(still.parts,true);
+      still.group.userData.openBounds=[bounds.min.toArray(),bounds.max.toArray()];
+      poses.set(percent,still.group);
     }
-    return opened.group;
+    return poses.get(percent);
   };
   ref.service=()=>studio??=assemble();
   return ref;
@@ -70,21 +71,22 @@ function foilLid(parts,print,grain){
   const position=foil.attributes.position,flat=position.array.slice();
   const tabX=.043,tabZ=.102,roll=.021;
   const grip=new THREE.Vector3(),target=new THREE.Vector3();
-  const bend=(z,crease)=>{
-    const length=Math.max(0,z-crease),angle=Math.min(length/roll,2.12);
+  const bend=(z,crease,fold)=>{
+    const length=Math.max(0,z-crease),angle=Math.min(length/roll,fold);
     const tail=length-roll*angle;
     return [y+roll*(1-Math.cos(angle))+tail*Math.sin(angle),Math.min(z,crease)+roll*Math.sin(angle)+tail*Math.cos(angle),angle];
   };
   function pose(t){
-    const crease=.128-.19*t;
+    // Keep the last crimp attached to the rear lip as the foil folds past the drink.
+    const crease=radius-(2*radius-.009)*t,fold=2.12+.55*t*t;
     for(let i=0;i<position.count;i++){
-      const x=flat[i*3],z=flat[i*3+2],[py,pz]=bend(z,crease);
+      const x=flat[i*3],z=flat[i*3+2],[py,pz]=bend(z,crease,fold);
       const rim=Math.pow(Math.min(1,Math.hypot(x,z)/radius),9);
       const wrinkle=(.0008+.0009*t)*rim*Math.cos(38*Math.atan2(z,x));
       position.setXYZ(i,x,py+wrinkle,pz);
     }
     position.needsUpdate=true;foil.computeVertexNormals();foil.computeBoundingSphere();
-    const [py,pz,angle]=bend(tabZ,crease);
+    const [py,pz,angle]=bend(tabZ,crease,fold);
     tab.position.set(tabX,py-.0004,pz);tab.rotation.x=-Math.PI/2-angle;tab.rotation.z=.36;
     tab.scale.set(.74,1.27,1);
     grip.set(tabX,py+.016*Math.sin(angle),pz+.016*Math.cos(angle));

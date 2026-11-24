@@ -18,21 +18,27 @@ function makeStudio(){
   return {renderer,scene,camera};
 }
 
-export const serviceControls='<div class="drink-stage"><span class="drink-grip" aria-hidden="true"></span><span class="drink-target" aria-hidden="true" hidden></span></div>'+
-  '<p class="drink-hint" role="status"></p><div class="buttons drink-buttons"><button type="button" id="prepare-drink"></button><button type="button" class="primary" id="serve-drink">Sofraya dön</button></div>';
+export function serviceControls(kind){
+  const adjust=kind==='lid'
+    ? '<label class="foil-control"><input id="foil-amount" type="range" min="0" max="100" step="1" aria-label="Kapak açıklığı"><span aria-hidden="true"></span></label>'
+    : '<button type="button" id="prepare-drink">Pipeti tak</button>';
+  return '<div class="drink-stage"><span class="drink-grip" aria-hidden="true"></span><span class="drink-target" aria-hidden="true" hidden></span></div>'+
+    '<p class="drink-hint" role="status"></p><div class="buttons drink-buttons">'+adjust+'<button type="button" class="primary" id="serve-drink">Sofraya dön</button></div>';
+}
 
-export function serveDrink(sheet,rig,kind,prepared,onPrepare){
+export function serveDrink(sheet,rig,kind,initialPercent,onPrepare){
   studio??=makeStudio();
   const {renderer,scene,camera}=studio,stage=sheet.querySelector('.drink-stage');
   const grip=stage.querySelector('.drink-grip'),target=stage.querySelector('.drink-target');
   const hint=sheet.querySelector('.drink-hint'),action=sheet.querySelector('#prepare-drink'),lid=kind==='lid';
-  const instruction=lid?'Folyo ucunu tutup geriye doğru soy.':'Yandaki pipeti tutup kutunun üstündeki deliğe bırak.';
-  const served=lid?'Ayranın kapağı açıldı.':'Pipet takıldı.';
+  const slider=sheet.querySelector('#foil-amount'),readout=slider?.nextElementSibling;
+  const instruction=lid?'Folyoyu istediğin kadar çekip bırak.':'Yandaki pipeti tutup kutunun üstündeki deliğe bırak.';
   stage.prepend(renderer.domElement);renderer.domElement.setAttribute('aria-hidden','true');
   scene.add(rig.group);
-  const center=new THREE.Vector3(0,lid ? .18 : .207,0);
+  const center=new THREE.Vector3(0,lid ? .195 : .207,lid ? -.033 : 0);
   camera.position.copy(center).add(new THREE.Vector3(.56,lid?1.04:.83,1));camera.lookAt(center);camera.updateMatrixWorld();
-  let value=prepared?1:0,done=prepared,active=null,frame=0,animating=false,alive=true;
+  let saved=initialPercent,value=saved/100,done=!lid&&saved===100,active=null,frame=0,animating=false,alive=true;
+  let sliderPointer=null;
   const start=new THREE.Vector2(),end=new THREE.Vector2(),hand=new THREE.Vector2(),offset=new THREE.Vector3();
   function screen(point){
     const p=point.clone().project(camera);
@@ -43,11 +49,15 @@ export function serveDrink(sheet,rig,kind,prepared,onPrepare){
     rig.pose(value);
     if(rig.straw)rig.straw.position.add(offset);
     mark(grip,screen(rig.grip.clone().add(offset)));mark(target,screen(rig.target));
+    if(slider){
+      const percent=Math.round(value*100);slider.value=String(percent);
+      readout.textContent='%'+percent;slider.setAttribute('aria-valuetext','%'+percent+' açık');
+    }
     renderer.render(scene,camera);
   }
   function resize(){
     const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;
-    const half=Math.max(lid ? .225 : .267,.147*h/w);
+    const half=Math.max(lid ? .268 : .267,.147*h/w);
     camera.top=half;camera.bottom=-half;camera.left=-half*w/h;camera.right=half*w/h;camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(w,h,false);
     rig.pose(0);start.copy(screen(rig.grip));end.copy(screen(rig.target));draw();
@@ -55,8 +65,16 @@ export function serveDrink(sheet,rig,kind,prepared,onPrepare){
   function controls(){
     grip.hidden=done||animating;target.hidden=lid||!active;
     stage.dataset.dragging=String(!!active);stage.dataset.ready=String(done);
-    action.hidden=done;action.disabled=animating;
-    action.textContent=lid?'Kapağı soy':'Pipeti tak';hint.textContent=done?served:instruction;
+    if(action){action.hidden=done;action.disabled=animating;}
+    if(slider)slider.disabled=!!active;
+    hint.textContent=done?'Pipet takıldı.':instruction;
+  }
+  function commitPeel(){
+    if(!alive||!sheet.open)return;
+    const percent=Math.round(value*100);
+    value=percent/100;
+    if(saved!==percent){saved=percent;onPrepare(percent);}
+    draw();
   }
   function settle(to){
     const from=value,drift=offset.clone(),at=performance.now();
@@ -71,25 +89,31 @@ export function serveDrink(sheet,rig,kind,prepared,onPrepare){
       animating=false;frame=0;controls();
     }
     // A completed drop is an edit even if the player immediately closes the sheet.
-    if(to===1&&!done){done=true;onPrepare();}
+    if(to===1&&!done){done=true;onPrepare(100);}
     tick(at);
   }
   function point(e){const r=stage.getBoundingClientRect();return new THREE.Vector2(e.clientX-r.left,e.clientY-r.top);}
   function down(e){
-    if(done||active||e.button!==0)return;
+    if(done||active||sliderPointer!==null||e.button!==0)return;
     const p=point(e);
     // Offer the length of the wrapped straw as a pickup zone.
-    const distance=lid?p.distanceTo(start):Math.hypot(p.x-start.x,(p.y-start.y)*.52);
+    const handle=lid?screen(rig.grip):start;
+    const distance=lid?p.distanceTo(handle):Math.hypot(p.x-start.x,(p.y-start.y)*.52);
     if(distance>Math.max(25,stage.clientHeight*.08))return;
     if(animating){cancelAnimationFrame(frame);animating=false;value=0;offset.set(0,0,0);draw();}
-    active={id:e.pointerId,p};stage.setPointerCapture(e.pointerId);controls();e.preventDefault();
+    active={id:e.pointerId,p,handle,value};stage.setPointerCapture(e.pointerId);controls();e.preventDefault();
   }
   function move(e){
     if(active?.id!==e.pointerId)return;
     const p=point(e),delta=p.clone().sub(active.p),axis=end.clone().sub(start);
-    const along=THREE.MathUtils.clamp(delta.dot(axis)/Math.max(1,axis.lengthSq()),0,1);
-    value=along*(lid?1:.75);offset.set(0,0,0);
-    if(!lid){
+    const travel=delta.dot(axis)/Math.max(1,axis.lengthSq());
+    if(lid){
+      // Resume at the actual curled tab. A drag to either end reaches that end.
+      const at=active.handle.clone().sub(start).dot(axis)/Math.max(1,axis.lengthSq());
+      const scale=travel>=0?(1-active.value)/Math.max(.001,1-at):active.value/Math.max(.001,at);
+      value=THREE.MathUtils.clamp(active.value+travel*scale,0,1);
+    }else{
+      value=THREE.MathUtils.clamp(travel,0,1)*.75;offset.set(0,0,0);
       // While held, let the straw follow the hand even on a missed drop.
       rig.pose(value);
       hand.copy(start).add(delta);
@@ -101,20 +125,34 @@ export function serveDrink(sheet,rig,kind,prepared,onPrepare){
   }
   function finish(e){
     if(active?.id!==e.pointerId)return;
-    let success=false;
-    if(e.type==='pointerup'){
-      move(e);
-      success=lid?value>=.67:point(e).distanceTo(end)<=Math.max(24,stage.clientHeight*.085);
+    if(!alive||!sheet.open){active=null;return;}
+    const released=e.type==='pointerup';
+    if(released)move(e);
+    active=null;
+    if(lid){
+      if(released)commitPeel();else {value=saved/100;draw();}
+      controls();
+    }else{
+      settle(released&&point(e).distanceTo(end)<=Math.max(24,stage.clientHeight*.085)?1:0);
     }
-    active=null;settle(success?1:0);
   }
   stage.onpointerdown=down;stage.onpointermove=move;
   stage.onpointerup=stage.onpointercancel=stage.onlostpointercapture=finish;
   const back=sheet.querySelector('#serve-drink');
-  action.onclick=()=>{if(!animating&&!active&&!done){settle(1);back.focus({preventScroll:true});}};
+  if(action)action.onclick=()=>{if(!animating&&!active&&!done){settle(1);back.focus({preventScroll:true});}};
+  if(slider){
+    slider.oninput=()=>{value=slider.valueAsNumber/100;draw();};
+    slider.onchange=()=>{if(sliderPointer===null)commitPeel();};
+    slider.onpointerdown=e=>{if(e.button===0){sliderPointer=e.pointerId;slider.setPointerCapture(e.pointerId);}};
+    slider.onpointerup=slider.onpointercancel=slider.onlostpointercapture=e=>{
+      if(sliderPointer!==e.pointerId)return;
+      sliderPointer=null;
+      if(e.type==='pointerup')commitPeel();else {value=saved/100;draw();}
+    };
+  }
   back.onclick=()=>sheet.close();
   const observer=new ResizeObserver(resize);observer.observe(stage);resize();controls();
-  return {state:()=>({kind,progress:Math.round(value*100)/100,prepared:done,animating}),close(){
+  return {state:()=>({kind,progress:Math.round(value*100)/100,prepared:lid?saved>0:done,animating}),close(){
     alive=false;active=null;cancelAnimationFrame(frame);observer.disconnect();scene.remove(rig.group);renderer.domElement.remove();
   }};
 }

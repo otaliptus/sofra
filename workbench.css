@@ -130,6 +130,9 @@ dialog p,dialog li {font-size:14px;font-weight:400;line-height:1.5;} dialog ul {
 .drink-stage[data-dragging=true] .drink-grip {opacity:0;}
 .drink-hint {text-align:center;margin:12px 0 0;}
 .drink-buttons {justify-content:center;}
+.foil-control {display:inline-flex;align-items:center;gap:7px;}
+.foil-control input {width:clamp(78px,22vw,130px);height:32px;margin:0;cursor:pointer;accent-color:#e6be83;}
+.foil-control span {min-width:4ch;font-size:13px;font-variant-numeric:tabular-nums;}
 @media(max-width:680px){:root{--item:79px;}#game{grid-template-rows:47px minmax(0,1fr) auto;}nav{font-size:14px;}#nav-left{gap:13px;}.shutter-row{height:65px;}#shutter{min-width:74px;padding:6px 12px;}.food{padding:2px 3px 9px;}#views{position:static;gap:8px;}#views button{font-size:12px;}#game.camera .shutter-row{gap:15px;}#coach{top:10px;}#prev-food,#next-food{font-size:11px;max-width:30%;}.rail-end {text-align:center;}}
 @media(max-height:440px){:root{--item:58px;}#game{grid-template-rows:30px minmax(0,1fr) auto;}.shutter-row{height:42px;}#shutter{min-width:62px;padding:1px 10px;font-size:13px;}nav{font-size:13px;}#coach{padding:4px 9px;top:5px;}}
 

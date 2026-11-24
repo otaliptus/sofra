@@ -1,9 +1,9 @@
-import { serveDrink, serviceControls } from './drink-service.js';
+import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
 import { editHistory } from './undo-history.js';
 import { mountMusic, musicCredits } from './music.js?v=playback-history';
-import { createBoard, cameraNames } from './board-3d.js?v=peel';
+import { createBoard, cameraNames } from './board-3d.js?v=free-peel';
 import { mountShelf } from './shelf.js?v=shelf-halves';
-import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=peel';
+import { breads, cloths, ingredients, pantry, openingPercent, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=free-peel';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
@@ -80,7 +80,7 @@ function showHandle(){
   pieceAction.hidden=!editing||(recipe.closed&&!cover&&!movablePiece(selected))||(!p&&!markedBread);
   if(!pieceAction.hidden){
     const piece=recipe.pieces[selected];
-    const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:piece.food==='ayran'&&piece.prepared?'Açık ayran':pantry[piece.food].name;
+    const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:piece.food==='ayran'&&openingPercent(piece)>0?'Açık ayran':pantry[piece.food].name;
     pieceAction.setAttribute('aria-label',name+' · Kaldır');
   }
   undoAction.disabled=!historyStack.length;
@@ -526,9 +526,14 @@ function openDrink(){
   const piece=recipe.pieces[selected];if(!piece)return;
   if(piece.food==='cay'){openTea();return;}
   const {name,opening}=pantry[piece.food];if(!opening)return;
-  dialog(opening==='lid'?'Ayran':name,serviceControls);
-  drinkService=serveDrink(sheet,board.drinkService(piece.food),opening,!!piece.prepared,()=>{
-    checkpoint();piece.prepared=true;update();clink(opening==='lid'?'spread':'drop');
+  dialog(opening==='lid'?'Ayran':name,serviceControls(opening));
+  drinkService=serveDrink(sheet,board.drinkService(piece.food),opening,openingPercent(piece),percent=>{
+    if(percent===openingPercent(piece))return;
+    checkpoint();
+    if(opening==='lid'){
+      if(percent)piece.peel=percent;else delete piece.peel;
+    }else piece.prepared=true;
+    update();clink(opening==='lid'?'spread':'drop');
   });
 }
 function openTea(){

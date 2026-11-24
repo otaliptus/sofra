@@ -17,5 +17,17 @@ test('a shared breakfast preserves each peeled lid and inserted straw independen
   const pieces=[serving('ayran',true),serving('ayran'),serving('visne-suyu',true),
     serving('muzlu-sut',true),serving('muzlu-sut',false),serving('cay',true),serving('cilekli-sut','true')];
   const restored=recipeFromHash('#simit='+btoa(JSON.stringify({...emptyRecipe(),pieces})));
-  assert.deepEqual(restored.pieces.map(p=>p.prepared),[true,undefined,true,true,undefined,undefined,undefined]);
+  assert.equal(restored.pieces[0].peel,50);
+  assert.deepEqual(restored.pieces.map(p=>p.prepared),[undefined,undefined,true,true,undefined,undefined,undefined]);
+});
+
+test('each ayran keeps its peel amount through repeated recipe reads',()=>{
+  const pieces=[{peel:2},{peel:32},{peel:83.6},{peel:101},{peel:0,prepared:true},{peel:-1},
+    {peel:'60'},{food:'portakal-suyu',peel:30,prepared:true},{food:'kahve',peel:61}]
+    .map(p=>({food:'ayran',x:0,z:0,a:0,...p}));
+  const shared=r=>recipeFromHash('#simit='+btoa(JSON.stringify(r)));
+  const restored=shared({...emptyRecipe(),pieces});
+  assert.deepEqual(restored.pieces.map(p=>p.peel),[2,32,84,100,undefined,undefined,undefined,undefined,undefined]);
+  assert.equal(restored.pieces[7].prepared,true);
+  assert.deepEqual(shared(restored),restored);
 });

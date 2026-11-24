@@ -1,12 +1,12 @@
 import * as THREE from './node_modules/three/build/three.module.js';
 import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
-import { createDrinks } from './drinks.js?v=peel';
+import { createDrinks } from './drinks.js?v=free-peel';
 import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, pantry, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=peel';
+import { breads, cloths, ingredients, pantry, openingPercent, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=free-peel';
 import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=plate-camera';
 
@@ -203,7 +203,7 @@ export async function createBoard(canvas){
   }
   function pieceGroup(p){
     const ref=foodModel(p.food);
-    return (ref.forPrepared?.(p.prepared)??ref.forFill?.(p.dem,p.water)??ref.group).clone();
+    return (ref.forOpening?.(openingPercent(p))??ref.forFill?.(p.dem,p.water)??ref.group).clone();
   }
   let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,hover=null,view=null,raf=0,clock=0;
   let orbit={yaw:0,elevation:Math.PI/2},editPose=null,photoLens='tilt';
@@ -603,9 +603,10 @@ export async function createBoard(canvas){
   function lift(p,hide=-1,swing=0){
     if(hover!==null && nodes[hover])nodes[hover].visible=true;
     hover=hide<0?null:hide;if(hover!==null)nodes[hover].visible=false;
-    if(ghost&&(ghost.userData.food!==p?.food||ghost.userData.prepared!==p?.prepared)){scene.remove(ghost);ghost=null;}
+    const opening=p?openingPercent(p):0;
+    if(ghost&&(ghost.userData.food!==p?.food||ghost.userData.opening!==opening)){scene.remove(ghost);ghost=null;}
     if(p){
-      if(!ghost){ghost=pieceGroup(p);ghost.userData.food=p.food;ghost.userData.prepared=p.prepared;scene.add(ghost);}
+      if(!ghost){ghost=pieceGroup(p);ghost.userData.food=p.food;ghost.userData.opening=opening;scene.add(ghost);}
       const coat=hide>=0&&coatings.get(recipe.pieces[hide]);
       if(ghost.children.at(-1)?.userData.coating && ghost.children.at(-1).geometry!==coat?.mesh.geometry)ghost.remove(ghost.children.at(-1));
       if(coat&&!ghost.children.at(-1)?.userData.coating)ghost.add(coat.mesh.clone());

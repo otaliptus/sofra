@@ -52,6 +52,15 @@ export const cloths={
 export const emptyRecipe=(bread='simit',cloth='kareli')=>({v:2,bread,cloth,closed:false,strokes:[],pieces:[]});
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const round=x=>Math.round(x*1000)/1000;
+export function openingPercent(piece){
+  const opening=pantry[piece.food]?.opening;
+  if(opening==='lid'){
+    if(Number.isFinite(piece.peel))return clamp(Math.round(piece.peel),0,100);
+    // Older breakfasts stored the single halfway pose as a boolean.
+    return piece.prepared===true?50:0;
+  }
+  return opening==='straw'&&piece.prepared===true?100:0;
+}
 export function boundedCoverPose(pose){
   if(!pose||![pose.x,pose.z,pose.yaw].every(Number.isFinite))return null;
   return {x:round(clamp(pose.x,-1.6,1.6)),z:round(clamp(pose.z,-1.6,1.6)),yaw:round(pose.yaw%(2*Math.PI))};
@@ -80,8 +89,9 @@ export function readRecipe(r) {
     const dem=clamp(Math.floor(Number(p.dem)||0),0,10);
     const loose=pantry[p.food].bread||pantry[p.food].drink;
     const xLimit=loose?1.6:1.3,zLimit=loose?1.6:.8;
+    const opening=openingPercent(p);
     return {food:p.food,x:round(clamp(p.x,-xLimit,xLimit)),z:round(clamp(p.z,-zLimit,zLimit)),a:round(p.a%(Math.PI*2)),dem,
-      water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(pantry[p.food].opening&&p.prepared===true?{prepared:true}:{}),
+      water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(opening?(p.food==='ayran'?{peel:opening}:{prepared:true}):{}),
       ...(!pantry[p.food].drink&&p.marks?.length?{marks:marks(p.marks)}:{})};
   })};
 }
