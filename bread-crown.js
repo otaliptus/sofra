@@ -24,8 +24,9 @@ export function crownHeight(mask,depth){
 
 // Leave a little cloth between the nearest crust and the rim. Every filling
 // can move independently without causing the parked bread to change sides.
-export function parkedCrown(crown,plateRadius){
-  const angle=-2.86,dx=Math.cos(angle),dz=Math.sin(angle),yaw=-.23;
+export function parkedCrown(crown,plateRadius,aspect){
+  // Put the spare toward the longer edge of the table in the opening overhead view.
+  const angle=Math.atan2(-1,-aspect*aspect),dx=Math.cos(angle),dz=Math.sin(angle),yaw=-.23;
   const c=Math.cos(yaw),s=Math.sin(yaw);
   const inside=Math.min(...crown.perimeter.map(([x,z])=>(c*x+s*z)*dx+(c*z-s*x)*dz));
   const distance=plateRadius+.055-inside;

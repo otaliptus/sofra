@@ -5,7 +5,8 @@ export const breads = {
   'tas-ekmek': {name:'Taş ekmek sandviç', asset:'tas-ekmek', depth:.062, crown:'tas-kapak', crownDepth:.085, closable:true}
 };
 export const photoCovers={open:'Açık',half:'Yarı kapalı',full:'Kapalı',side:'Yanında',custom:'Serbest'};
-export const photoCoverFor=recipe=>recipe.photoCover??(recipe.closed?'full':recipe.coverPose?'custom':'side');
+export const tableCoverFor=recipe=>recipe.coverRemoved?'open':recipe.closed?'full':recipe.coverPose?'custom':'side';
+export const photoCoverFor=recipe=>recipe.coverRemoved?'open':recipe.photoCover??tableCoverFor(recipe);
 export const ingredients = [
   {id:'cream',name:'Bal kaymak',en:'Honey and clotted cream',asset:'kaymak',kind:'spread'},
   {id:'jam',name:'Vişne reçeli',en:'Sour cherry jam',asset:'recel',kind:'spread'},
@@ -63,8 +64,11 @@ export function readRecipe(r) {
   const cloth=Object.hasOwn(cloths,r.cloth)?r.cloth:'tokat';
   const coverPose=boundedCoverPose(r.coverPose),photoCoverPose=boundedCoverPose(r.photoCoverPose);
   const validCover=typeof r.photoCover==='string'&&Object.hasOwn(photoCovers,r.photoCover)&&(r.photoCover!=='custom'||photoCoverPose||coverPose);
-  return {...emptyRecipe(r.bread,cloth),closed:r.bread==='tas-ekmek'&&r.closed===true,
-    ...(coverPose?{coverPose}:{}),...(photoCoverPose?{photoCoverPose}:{}),...(validCover?{photoCover:r.photoCover}:{}),strokes:marks(r.strokes),pieces:r.pieces.map(p=>{
+  const cover=r.coverRemoved===true?{coverRemoved:true}:{
+    closed:r.bread==='tas-ekmek'&&r.closed===true,
+    ...(coverPose?{coverPose}:{}),...(photoCoverPose?{photoCoverPose}:{}),...(validCover?{photoCover:r.photoCover}:{})
+  };
+  return {...emptyRecipe(r.bread,cloth),...cover,strokes:marks(r.strokes),pieces:r.pieces.map(p=>{
     const dem=clamp(Math.floor(Number(p.dem)||0),0,10);
     return {food:p.food,x:round(clamp(p.x,-1.3,1.3)),z:round(clamp(p.z,-.8,.8)),a:round(p.a%(Math.PI*2)),dem,
       water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(p.marks?.length?{marks:marks(p.marks)}:{})};

@@ -5,9 +5,9 @@ import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, clamp, photoCoverFor, boundedCoverPose } from './recipe.js?v=table-halves';
+import { breads, cloths, ingredients, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=plate-camera';
 import { simitRing } from './simit-ring.js';
-import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=table-halves';
+import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=plate-camera';
 
 
 export const cameraNames={top:'Üstten',tilt:'Eğik',low:'Alçak',corner:'Köşeden'};
@@ -195,6 +195,7 @@ export async function createBoard(canvas){
   }
   let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,hover=null,view=null,raf=0,clock=0;
   let orbit={yaw:0,elevation:Math.PI/2},editPose=null,photoLens='tilt';
+  let editorAspect=1;
   const falls=[];
   const landing=new Map();
 
@@ -218,44 +219,33 @@ export async function createBoard(canvas){
       }else add(0,ref.depth,0);
     }
     sample(bread,bread.group);recipe.pieces.forEach((p,i)=>sample(blanks[p.food],nodes[i]));
-    if(lid?.group.visible)sample(lid,lid.group);return points;
-  }
-  function frameEditor(){
-    const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
-    const c=Math.cos(orbit.yaw),s=Math.sin(orbit.yaw),pitch=Math.sin(orbit.elevation);
-    let left=-plateRadius,right=plateRadius,bottom=-plateRadius*pitch,top=plateRadius*pitch+.03;
-    function include(pose){
-      const cx=Math.cos(pose.yaw),sx=Math.sin(pose.yaw);
-      for(const [px,pz] of lid.perimeter){
-        const x=pose.x+cx*px+sx*pz,z=pose.z-sx*px+cx*pz;
-        const horizontal=x*c-z*s,vertical=-(x*s+z*c)*pitch;
-        left=Math.min(left,horizontal);right=Math.max(right,horizontal);
-        bottom=Math.min(bottom,vertical+clothHeight);top=Math.max(top,vertical+lid.depth);
-      }
+    // A spare on the cloth is scenery in the normal plate portrait. An
+    // explicit cover composition can include the whole spare in the shot.
+    if(lid?.group.visible&&(recipe.photoCover||Math.hypot(lid.group.position.x,lid.group.position.z)<=plateRadius)){
+      sample(lid,lid.group);
     }
-    if(lid?.group.visible){
-      include(lid.parked);
-      if(recipe.coverPose)include(recipe.coverPose);
-    }
-    const unit=Math.min(Math.min(w,h)*.94/(2*plateRadius),w*.94/(right-left),h*.90/(top-bottom));
-    const hw=w/(2*unit),hh=h/(2*unit);
-    // Preserve the plate's usual centre wherever there is room for both halves.
-    const x=clamp(0,right-hw*.94,left+hw*.94),y=clamp(0,top-hh*.90,bottom+hh*.90);
-    editorCamera.left=x-hw;editorCamera.right=x+hw;editorCamera.top=y+hh;editorCamera.bottom=y-hh;
-    editorCamera.updateProjectionMatrix();
+    return points;
   }
   function cameraPosition(){
     if(view)aimCamera(photoCamera,orbit,photoSetup.target,photoSetup.distance);
-    else {frameEditor();aimCamera(editorCamera,orbit,origin,4);}
+    else aimCamera(editorCamera,orbit,origin,4);
     render();
   }
   function resize(){
     const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
     renderer.setSize(w,h,false);framePixels=Math.min(w*.91,h*.93);
-    if(!view&&!editPose)orbit={yaw:w<h*.93?Math.PI/3:0,elevation:Math.PI/2};
     if(view){
       photoCamera.aspect=w/h;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan*h/framePixels));
       photoCamera.updateProjectionMatrix();
+    }else{
+      const unit=Math.min(w,h)*.94/(2*plateRadius);
+      editorCamera.left=-w/(2*unit);editorCamera.right=-editorCamera.left;
+      editorCamera.top=h/(2*unit);editorCamera.bottom=-editorCamera.top;
+      editorCamera.updateProjectionMatrix();
+      if(editorAspect!==w/h){
+        editorAspect=w/h;
+        if(lid?.group.visible&&!recipe.coverPose&&!recipe.closed)placeCover();
+      }
     }
     canvas.parentElement.style.setProperty('--frame',framePixels+'px');cameraPosition();
   }
@@ -374,18 +364,18 @@ export async function createBoard(canvas){
   function position(group,p,h){group.position.set(p.x,h,p.z);group.rotation.set(0,p.a,0);}
   function placeCover(){
     if(lid)lid.group.visible=false;
-    const mode=view?photoCoverFor(recipe):(recipe.closed?'full':recipe.coverPose?'custom':'side');
+    const mode=view?photoCoverFor(recipe):tableCoverFor(recipe);
     if(mode==='open')return;
     if(!crownCache.has(breadId)){
       const b=breads[breadId],upper=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[breadId],cutFace:art[b.asset],ring:breadId==='simit'});
-      upper.parked=parkedCrown(upper,plateRadius);
       upper.radius=.02+Math.max(...upper.perimeter.map(([x,z])=>Math.hypot(x,z)));
       crownCache.set(breadId,upper);scene.add(upper.group);
     }
     lid=crownCache.get(breadId);lid.group.visible=true;
-    let pose=lid.parked;
-    if(mode==='custom')pose=(view&&recipe.photoCoverPose)||recipe.coverPose;
-    else if(mode!=='side')pose=crownPlacement(mode,bread,lid,recipe.pieces,blanks);
+    let pose;
+    if(mode==='side')pose=parkedCrown(lid,plateRadius,editorAspect);
+    else if(mode==='custom')pose=(view&&recipe.photoCover==='custom'&&recipe.photoCoverPose)||recipe.coverPose;
+    else pose=crownPlacement(mode,bread,lid,recipe.pieces,blanks);
     settleCover(pose,mode==='half'||mode==='custom' ? .48 : .28);
   }
   function settleCover({x,z,yaw},maxSlope){
@@ -541,7 +531,6 @@ export async function createBoard(canvas){
       heights.push(height);position(g,p,height);scene.add(g);nodes.push(g);paintPiece(p,i);
     }
     placeCover();
-    if(!view)frameEditor();
     render();
   }
   function paintLoaf(strokes){
@@ -618,7 +607,7 @@ export async function createBoard(canvas){
     return out;
   }
   paintBread([]);new ResizeObserver(resize).observe(canvas);resize();
-  return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,fitEditor:cameraPosition,
+  return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
     coverPose,coverHandle,pickCover,covers,coverPlanePoint,dragCover,
     adjustCover(pose){settleCover(boundedCoverPose(pose),.48);render();},
     restoreCover(){placeCover();render();},

@@ -1,8 +1,8 @@
 import { editHistory } from './undo-history.js';
 import { mountMusic, musicCredits } from './music.js?v=playback-history';
-import { createBoard, cameraNames } from './board-3d.js?v=table-halves';
+import { createBoard, cameraNames } from './board-3d.js?v=plate-camera';
 import { mountShelf } from './shelf.js?v=servings';
-import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=table-halves';
+import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=plate-camera';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
@@ -19,7 +19,7 @@ function draft(){try{return JSON.parse(read(storeKey));}catch{return null;}}
 const shared=recipeFromHash(location.hash),stored=shared?null:draft(),savedRecipe=readRecipe(stored);
 let recipe=shared||savedRecipe||emptyRecipe();
 function selectionFor(index){
-  if(index===coverSelection)return coverSelection;
+  if(index===coverSelection&&!recipe.coverRemoved)return coverSelection;
   if(index===breadSelection && recipe.strokes.length)return breadSelection;
   return Number.isInteger(index)&&recipe.pieces[index]?index:-1;
 }
@@ -75,16 +75,20 @@ function showHandle(){
   turn.setAttribute('aria-label',cover?'Üst parçayı döndür':'Malzemeyi döndür');
   if(!turn.hidden){turn.style.left=p.x+'px';turn.style.top=p.y+'px';}
   const markedBread=selected===breadSelection&&recipe.strokes.length>0;
-  pieceAction.hidden=!editing||recipe.closed||cover||(!p&&!markedBread);
-  if(!pieceAction.hidden)pieceAction.setAttribute('aria-label',(markedBread?breads[recipe.bread].name:pantry[recipe.pieces[selected].food].name)+' · Kaldır');
+  pieceAction.hidden=!editing||(recipe.closed&&!cover)||(!p&&!markedBread);
+  if(!pieceAction.hidden){
+    const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:pantry[recipe.pieces[selected].food].name;
+    pieceAction.setAttribute('aria-label',name+' · Kaldır');
+  }
   undoAction.disabled=!historyStack.length;
   undoAction.title='Geri al · '+historyStack.length+' adım';
   $('#edit-actions').hidden=!editing||(pieceAction.hidden&&undoAction.disabled);
 }
 function showCoverChoice(){
+  $('#cover-control').hidden=mode!=='camera'||!!recipe.coverRemoved;
   const custom=coverSelect.querySelector('[value="custom"]');
   custom.hidden=custom.disabled=!(recipe.photoCoverPose||recipe.coverPose);
-  coverSelect.value=photoCoverFor(recipe);
+  coverSelect.value=recipe.photoCover??'table';
 }
 function keepCover(fromWheel=false){
   const pose=boundedCoverPose(board.coverPose());
@@ -93,7 +97,7 @@ function keepCover(fromWheel=false){
   if(mode==='edit'){
     recipe.coverPose=pose;recipe.closed=false;
     delete recipe.photoCover;delete recipe.photoCoverPose;
-    board.fitEditor();lidButton();
+    lidButton();
   }else{recipe.photoCoverPose=pose;recipe.photoCover='custom';}
   showCoverChoice();showHandle();save();
 }
@@ -107,7 +111,7 @@ function lidButton(){
   button.textContent=recipe.closed?'Sandviçi aç':'Sandviçi kapat';button.setAttribute('aria-pressed',String(!!recipe.closed));
 }
 $('#lid').onclick=()=>{
-  checkpoint();recipe.closed=!recipe.closed;
+  checkpoint();recipe.closed=!recipe.closed;delete recipe.coverRemoved;
   delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
   selected=-1;chooseBrush(null);update();
 };
@@ -127,11 +131,20 @@ function undo(){
   if(mode==='camera'){board.refreshCover();showCoverChoice();showHandle();}
 }
 function removeSelected(){
-  if(selected<0||!recipe.pieces[selected]||mode!=='edit'||recipe.closed)return;
-  checkpoint();recipe.pieces.splice(selected,1);selected=-1;chooseBrush(null);update(true);
+  if(mode!=='edit'||gesture)return;
+  const cover=selected===coverSelection;
+  if(cover){
+    if(recipe.coverRemoved)return;
+    checkpoint();recipe.coverRemoved=true;recipe.closed=false;
+    delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
+  }else{
+    if(recipe.closed||!recipe.pieces[selected])return;
+    checkpoint();recipe.pieces.splice(selected,1);
+  }
+  selected=-1;chooseBrush(null);update(!cover);
 }
 function removalChoices(){
-  if(gesture||recipe.closed||mode!=='edit')return;
+  if(gesture||mode!=='edit'||(recipe.closed&&selected!==coverSelection))return;
   const piece=recipe.pieces[selected],marks=selected===breadSelection?recipe.strokes:piece?.marks;
   if(!marks?.length){removeSelected();canvas.focus({preventScroll:true});return;}
   const foods=[...new Set(marks.map(mark=>mark.food).reverse())];
@@ -459,7 +472,7 @@ function dialog(title,html){
 }
 sheet.addEventListener('close',()=>{cancelAnimationFrame(teaFrame);});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
-$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Sofrada ve Foto’da sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
+$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Sofrada ve Foto’da sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){
@@ -483,7 +496,11 @@ $('#grand-reset').onclick=()=>{
 $('#fresh').onclick=()=>{
   if(gesture)return;
   const options=Object.entries(breads).map(([id,b])=>'<button data-bread="'+id+'" '+(id==='simit'?'id="plain"':'')+'><img alt="" src="./assets/'+b.asset+'.webp"><span>'+b.name+'</span></button>').join('');
-  dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons"><button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
+  const restore=recipe.coverRemoved?'<button id="restore-cover">Üst parçayı geri koy</button>':'';
+  dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons">'+restore+'<button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
+  if(restore)$('#restore-cover').onclick=()=>{
+    checkpoint();delete recipe.coverRemoved;sheet.close();selected=coverSelection;chooseBrush(null);update();canvas.focus({preventScroll:true});
+  };
   $('#undo').disabled=!historyStack.length;$('#undo').onclick=()=>{undo();sheet.close();};
   for(const b of $('.bread-options').children)b.onclick=()=>startBreakfast(b.dataset.bread,recipe.cloth);
   $('#random').onclick=()=>startBreakfast(recipe.bread,recipe.cloth,true);
@@ -511,7 +528,7 @@ function openTea(){
 function camera(a){
   if(gesture)return;
   mode='camera';angle=a;selected=-1;chooseBrush(null);hint('');showHandle();$('#game').classList.add('camera');
-  $('#back').hidden=$('#views').hidden=$('#finder').hidden=$('#cover-control').hidden=false;
+  $('#back').hidden=$('#views').hidden=$('#finder').hidden=false;
   showCoverChoice();
   for(const b of $('#views').children)b.setAttribute('aria-pressed',String(b.dataset.angle===a));
   board.setView(a);lidButton();showHandle();canvas.focus({preventScroll:true});coverHint();
@@ -521,9 +538,12 @@ function leaveCamera(){
   mode='edit';$('#game').classList.remove('camera');$('#back').hidden=$('#views').hidden=$('#finder').hidden=$('#cover-control').hidden=true;board.setView(null);showHandle();lidButton();hint('');
 }
 coverSelect.onchange=()=>{
-  if(mode!=='camera'||!Object.hasOwn(photoCovers,coverSelect.value))return;
+  const choice=coverSelect.value;
+  if(mode!=='camera'||recipe.coverRemoved||(choice!=='table'&&!Object.hasOwn(photoCovers,choice)))return;
   if(gesture){showCoverChoice();return;}
-  checkpoint();recipe.photoCover=coverSelect.value;board.refreshCover();showHandle();save();coverHint();
+  checkpoint();
+  if(choice==='table')delete recipe.photoCover;else recipe.photoCover=choice;
+  board.refreshCover();showHandle();save();coverHint();
 };
 for(const [id,name] of Object.entries(cameraNames)){
   const btn=document.createElement('button');btn.dataset.angle=id;btn.textContent=name;btn.onclick=()=>camera(id);$('#views').append(btn);
@@ -573,10 +593,14 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){if(mode==='camera')leaveCamera();else{chooseBrush(null);selected=-1;showHandle();}return;}
   if(mode==='edit'&&e.target===canvas&&['[',']'].includes(e.key)){
     const choices=recipe.closed?[]:recipe.pieces.map((_,i)=>i);
-    choices.push(coverSelection);
+    if(!recipe.coverRemoved)choices.push(coverSelection);
+    if(!choices.length)return;
     const i=choices.indexOf(selected),step=e.key==='['?-1:1;
     selected=choices[i<0?(step<0?choices.length-1:0):(i+step+choices.length)%choices.length];
     chooseBrush(null);showHandle();return;
+  }
+  if(mode==='edit'&&(e.target===canvas||e.target===turn)&&['Delete','Backspace'].includes(e.key)){
+    e.preventDefault();removeSelected();canvas.focus({preventScroll:true});return;
   }
   if(mode==='camera'||(selected===coverSelection&&(e.target===canvas||e.target===turn))){
     const dirs={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-16],ArrowDown:[0,16]};
@@ -600,7 +624,6 @@ document.addEventListener('keydown',e=>{
   }
   const p=recipe.pieces[selected];if(!p)return;
   if(e.key==='Enter'&&p.food==='cay'){e.preventDefault();openTea();return;}
-  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();removeSelected();return;}
   const dirs={ArrowLeft:[-.02,0],ArrowRight:[.02,0],ArrowUp:[0,-.02],ArrowDown:[0,.02]};
   if(dirs[e.key]){e.preventDefault();const [dx,dz]=dirs[e.key];releasePiece({...p,x:p.x+dx,z:p.z+dz},selected);}
   if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
@@ -610,5 +633,5 @@ window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected
 window.advanceTime=ms=>board?.step(ms);
 try{
   board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
-  hint(recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
+  hint(recipe.coverRemoved||recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
 }catch(err){console.error(err);hint('Sofra açılamadı. WebGL destekli bir tarayıcıda yenile.',0);}
