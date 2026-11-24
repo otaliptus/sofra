@@ -6,9 +6,9 @@ import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, pantry, openingPercent, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=free-peel';
+import { breads, cloths, ingredients, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=slices';
 import { simitRing } from './simit-ring.js';
-import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=plate-camera';
+import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=slices';
 
 
 export const cameraNames={top:'Üstten',tilt:'Eğik',low:'Alçak',corner:'Köşeden'};
@@ -147,7 +147,7 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
 }
 function relative(p,x,z){
   const dx=x-p.x,dz=z-p.z,c=Math.cos(p.a),s=Math.sin(p.a);
-  return [dx*c-dz*s,dx*s+dz*c];
+  return [localX(p,dx*c-dz*s),dx*s+dz*c];
 }
 
 export async function createBoard(canvas){
@@ -201,11 +201,26 @@ export async function createBoard(canvas){
     blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[loaf],cutFace:art[b.asset],ring,flex:ring});
     return blanks[id];
   }
+  const sliceModels=new Map();
+  function modelFor(p){
+    const base=foodModel(p.food);
+    if(!p.thickness&&!p.taper)return base;
+    const key=[p.food,p.thickness||'regular',!!p.taper].join('/');
+    if(!sliceModels.has(key)){
+      const depth=sliceThickness[p.thickness||'regular'].scale,width=p.taper ? .71 : 1;
+      const group=base.group.clone();
+      for(const mesh of group.children)mesh.geometry=mesh.geometry.clone().scale(width,depth,width);
+      const scaled=points=>points.map(([x,z])=>[x*width,z*width]);
+      sliceModels.set(key,{...base,group,top:group.children[0],width:base.width*width,height:base.height*width,depth:base.depth*depth,
+        topY:(u,v)=>base.topY(u,v)*depth,perimeter:scaled(base.perimeter),contacts:scaled(base.contacts)});
+    }
+    return sliceModels.get(key);
+  }
   function pieceGroup(p){
-    const ref=foodModel(p.food);
+    const ref=modelFor(p);
     return (ref.forOpening?.(openingPercent(p))??ref.forFill?.(p.dem,p.water)??ref.group).clone();
   }
-  let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,hover=null,view=null,raf=0,clock=0;
+  let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,ghostModel=null,hover=null,view=null,raf=0,clock=0;
   let orbit={yaw:0,elevation:Math.PI/2},editPose=null,photoLens='tilt';
   let editorAspect=1;
   const falls=[];
@@ -236,7 +251,7 @@ export async function createBoard(canvas){
     }
     sample(bread,bread.group);
     recipe.pieces.forEach((p,i)=>{
-      if(!pantry[p.food].bread||recipe.photoCover||Math.hypot(p.x,p.z)<=plateRadius)sample(foodModel(p.food),nodes[i]);
+      if(!pantry[p.food].bread||recipe.photoCover||Math.hypot(p.x,p.z)<=plateRadius)sample(modelFor(p),nodes[i]);
     });
     // A spare on the cloth is scenery in the normal plate portrait. An
     // explicit cover composition can include the whole spare in the shot.
@@ -336,7 +351,7 @@ export async function createBoard(canvas){
     const hits=ray.intersectObjects(faces,false);
     for(const h of hits){
       const index=indices.get(h.object);
-      const ref=index<0?bread:foodModel(recipe.pieces[index].food),u=h.uv.x,v=1-h.uv.y;
+      const ref=index<0?bread:modelFor(recipe.pieces[index]),u=h.uv.x,v=1-h.uv.y;
       const coat=index<0?bread.coating:coatings.get(recipe.pieces[index]);
       if(coat?.mesh===h.object&&coat.rise(u,v)<.0005)continue;
       if(!pantry[recipe.pieces[index]?.food]?.drink&&ref.mask.alpha(u,v)<.49)continue;
@@ -352,7 +367,7 @@ export async function createBoard(canvas){
     let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
     for(let i=0;i<count;i++){
       if(i===exclude)continue;
-      const p=recipe.pieces[i],food=foodModel(p.food),[lx,lz]=relative(p,x,z);
+      const p=recipe.pieces[i],food=modelFor(p),[lx,lz]=relative(p,x,z);
       const u=lx/food.width+.5,v=lz/food.height+.5;
       if(food.mask.alpha(u,v)<.47)continue;
       const offset=offsets[i]?.(lx,lz)||0;
@@ -361,8 +376,8 @@ export async function createBoard(canvas){
     return high;
   }
   function support(p,count=recipe.pieces.length,exclude=-1,fit=false){
-    const ref=foodModel(p.food),cs=Math.cos(p.a),sn=Math.sin(p.a);
-    const samples=ref.contacts.map(([a,b])=>heightAt(p.x+a*cs+b*sn,p.z-a*sn+b*cs,count,exclude));
+    const ref=modelFor(p),cs=Math.cos(p.a),sn=Math.sin(p.a);
+    const samples=ref.contacts.map(([x,z])=>{const a=localX(p,x);return heightAt(p.x+a*cs+z*sn,p.z-a*sn+z*cs,count,exclude);});
     const good=samples.filter(v=>v>=0),max=Math.max(...samples);
     const stable=!!pantry[p.food].bread||pantry[p.food].drink||good.length>=Math.max(1,samples.length*.28);
     if(!fit||ref.flex||pantry[p.food].drink||max-Math.min(...samples)<.003)return {stable,height:max+.001};
@@ -385,7 +400,7 @@ export async function createBoard(canvas){
     }
     return {height,sx,sz};
   }
-  function position(group,p,h){group.position.set(p.x,h,p.z);group.rotation.set(0,p.a,0);}
+  function position(group,p,h){group.position.set(p.x,h,p.z);group.rotation.set(0,p.a,0);group.scale.x=localX(p,1);}
   function placeCover(){
     if(lid)lid.group.visible=false;
     const mode=view?photoCoverFor(recipe):tableCoverFor(recipe);
@@ -401,7 +416,7 @@ export async function createBoard(canvas){
     let pose;
     if(mode==='side')pose=parkedCrown(lid,plateRadius,editorAspect);
     else if(mode==='custom')pose=(view&&recipe.photoCover==='custom'&&recipe.photoCoverPose)||recipe.coverPose;
-    else pose=crownPlacement(mode,bread,lid,recipe.pieces,blanks);
+    else pose=crownPlacement(mode,bread,lid,recipe.pieces,modelFor);
     settleCover(pose,mode==='half'||mode==='custom' ? .48 : .28);
   }
   function settleCover({x,z,yaw},maxSlope){
@@ -410,7 +425,7 @@ export async function createBoard(canvas){
       // crown on the highest olive. Reuse the topping contact solver at a
       // shallower slope, with original vertices so dragging cannot accumulate bends.
       const onCloth=Math.hypot(x,z)>plateRadius+lid.radius&&recipe.pieces.every(p=>{
-        const ref=foodModel(p.food);
+        const ref=modelFor(p);
         return Math.hypot(x-p.x,z-p.z)>lid.radius+Math.hypot(ref.width,ref.height)/2;
       });
       // A ring lying flat on the cloth keeps the original mesh, including
@@ -487,7 +502,7 @@ export async function createBoard(canvas){
     }
     render();
   }
-  function drape(p,index,base,ref=foodModel(p.food),stiff=p.food===breads.simit.crown ? .32 : p.food==='kasar' ? .50 : p.food.includes('onion') ? .70 : .9){
+  function drape(p,index,base,ref=modelFor(p),stiff=p.food===breads.simit.crown ? .32 : p.food==='kasar' ? .50 : p.food.includes('onion') ? .70 : .9){
     const c=Math.cos(p.a),s=Math.sin(p.a);
     const ring=!p.food||p.food===breads.simit.crown;
     const steps=28,stride=steps+1,grid=new Float32Array(stride*stride);
@@ -495,7 +510,7 @@ export async function createBoard(canvas){
     // Propagate those contact heights, then relax the surface between contacts.
     for(let row=0;row<=steps;row++)for(let col=0;col<=steps;col++){
       const x=(col/steps-.5)*ref.width,z=(row/steps-.5)*ref.height;
-      grid[row*stride+col]=ring&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+x*c+z*s,p.z-x*s+z*c,index,-1);
+      grid[row*stride+col]=ring&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+localX(p,x)*c+z*s,p.z-localX(p,x)*s+z*c,index,-1);
     }
     const dx=ref.width/steps*stiff,dz=ref.height/steps*stiff,diagonal=Math.hypot(dx,dz);
     function sweep(start,end,dir){
@@ -549,7 +564,7 @@ export async function createBoard(canvas){
     paintLoaf(r.strokes);
     nodes=[];heights=[];offsets=[];
     for(let i=0;i<r.pieces.length;i++){
-      const p=r.pieces[i],ref=foodModel(p.food),{height,stable,offset}=support(p,i,-1,true);
+      const p=r.pieces[i],ref=modelFor(p),{height,stable,offset}=support(p,i,-1,true);
       if(settle&&!stable){r.pieces.splice(i--,1);slip(p);continue;}
       const g=pieceGroup(p);
       const shape=ref.flex?drape(p,i,height):offset;
@@ -571,7 +586,7 @@ export async function createBoard(canvas){
     let coat=coatings.get(p);
     if(!coat){
       if(!p.marks?.length)return;
-      coat=createCoating(foodModel(p.food),art);coat.mesh.userData.coating=true;coatings.set(p,coat);
+      coat=createCoating(modelFor(p),art);coat.mesh.userData.coating=true;coatings.set(p,coat);
     }
     coat.update(p.marks||[],offsets[i]);
     if(coat.mesh.parent!==nodes[i])nodes[i].add(coat.mesh);
@@ -590,7 +605,7 @@ export async function createBoard(canvas){
     for(let i=falls.length-1;i>=0;i--){
       const fall=falls[i],t=clamp((clock-fall.start)/430,0,1),g=fall.node;
       g.position.x=fall.x+fall.dx*t*.20;g.position.z=fall.z+fall.dz*t*.20;
-      g.position.y=.13*(1-t*t);g.rotation.z=t*.93;g.scale.setScalar(1-.78*t*t);
+      g.position.y=.13*(1-t*t);g.rotation.z=t*.93;g.scale.setScalar(1-.78*t*t);g.scale.x*=fall.sign;
       if(t>=1){scene.remove(g);falls.splice(i,1);}else moving=true;
     }
     render();return moving;
@@ -604,9 +619,10 @@ export async function createBoard(canvas){
     if(hover!==null && nodes[hover])nodes[hover].visible=true;
     hover=hide<0?null:hide;if(hover!==null)nodes[hover].visible=false;
     const opening=p?openingPercent(p):0;
-    if(ghost&&(ghost.userData.food!==p?.food||ghost.userData.opening!==opening)){scene.remove(ghost);ghost=null;}
+    const ref=p?modelFor(p):null;
+    if(ghost&&(ghostModel!==ref||ghost.userData.opening!==opening)){scene.remove(ghost);ghost=null;}
     if(p){
-      if(!ghost){ghost=pieceGroup(p);ghost.userData.food=p.food;ghost.userData.opening=opening;scene.add(ghost);}
+      if(!ghost){ghost=pieceGroup(p);ghostModel=ref;ghost.userData.opening=opening;scene.add(ghost);}
       const coat=hide>=0&&coatings.get(recipe.pieces[hide]);
       if(ghost.children.at(-1)?.userData.coating && ghost.children.at(-1).geometry!==coat?.mesh.geometry)ghost.remove(ghost.children.at(-1));
       if(coat&&!ghost.children.at(-1)?.userData.coating)ghost.add(coat.mesh.clone());
@@ -618,7 +634,7 @@ export async function createBoard(canvas){
 
     const g=pieceGroup(p);position(g,p,.1);scene.add(g);
     const length=Math.hypot(p.x,p.z)||1;
-    falls.push({node:g,start:clock,x:p.x,z:p.z,dx:p.x/length,dz:p.z/length});run();
+    falls.push({node:g,start:clock,sign:localX(p,1),x:p.x,z:p.z,dx:p.x/length,dz:p.z/length});run();
   }
   function capture(){
     // Render the square gate at the actual export resolution, even on a phone.
@@ -637,6 +653,23 @@ export async function createBoard(canvas){
   paintBread([]);new ResizeObserver(resize).observe(canvas);resize();
   return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
     coverPose,coverHandle,pickCover,covers,coverPlanePoint,dragCover,
+    placeCut(piece,index){
+      const ref=modelFor(piece);
+      if(!support(piece,index).stable){
+        const radius=Math.hypot(piece.x,piece.z),fit=(plateRadius-Math.hypot(ref.width,ref.height)/2)/radius;
+        if(fit<1){piece.x=round(piece.x*fit);piece.z=round(piece.z*fit);}
+      }
+      for(const mark of piece.marks||[])for(const pt of mark.line){
+        const u=pt[0]/1024,v=pt[1]/1024;
+        if(ref.mask.alpha(u,v)>.5)continue;
+        let best=Infinity;
+        for(const [x,z] of ref.contacts){
+          const cu=.5+x/ref.width,cv=.5+z/ref.height;
+          const dist=(u-cu)**2+(v-cv)**2;
+          if(dist<best){best=dist;pt[0]=Math.round(cu*1024);pt[1]=Math.round(cv*1024);}
+        }
+      }
+    },
     drinkService(id){return foodModel(id).service();},
     adjustCover(pose){settleCover(boundedCoverPose(pose),.48);render();},
     restoreCover(){placeCover();render();},
@@ -648,7 +681,7 @@ export async function createBoard(canvas){
       for(const ring of [Math.hypot(.48,.32),.77,.95]){
         for(let i=0;i<16;i++){
           const angle=Math.atan2(.32,.48)+i*Math.PI/8,x=ring*Math.cos(angle),z=ring*Math.sin(angle);
-          if(!covers(x,z)&&recipe.pieces.every(p=>Math.hypot(x-p.x,z-p.z)>radius+foodModel(p.food).width/2+.025))return {x,z};
+          if(!covers(x,z)&&recipe.pieces.every(p=>Math.hypot(x-p.x,z-p.z)>radius+modelFor(p).width/2+.025))return {x,z};
         }
       }
       return null;
@@ -665,7 +698,7 @@ export async function createBoard(canvas){
 
     handle(i){
       const p=recipe.pieces[i];if(!p)return null;
-      const ref=foodModel(p.food),edge=ref.width*.5,height=heights[i]+ref.depth+(offsets[i]?.(edge,0)||0);
+      const ref=modelFor(p),edge=ref.width*.5,height=heights[i]+ref.depth+(offsets[i]?.(localX(p,edge),0)||0);
       const at=screen(p.x+Math.cos(p.a)*edge,height,p.z-Math.sin(p.a)*edge);
       if(pantry[p.food].bread||pantry[p.food].drink){at.x=clamp(at.x,23,canvas.clientWidth-23);at.y=clamp(at.y,23,canvas.clientHeight-23);}
       return {...at,height};

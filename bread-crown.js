@@ -1,3 +1,5 @@
+import { localX } from './recipe.js?v=slices';
+
 // Approximate distance from the cutout edge, including the inside of each
 // ring. The crown rounds into both edges as it would on a sliced simit.
 export function crownHeight(mask,depth){
@@ -34,7 +36,7 @@ export function parkedCrown(crown,plateRadius,aspect){
 }
 
 // Tuck the top diagonally for the half-covered photo, favouring visible food.
-export function crownPlacement(mode,bread,crown,pieces,foods){
+export function crownPlacement(mode,bread,crown,pieces,modelFor){
   if(mode==='full')return {x:0,z:0,yaw:0};
   let best,lowest=Infinity;
   for(let i=0;i<12;i++){
@@ -46,11 +48,11 @@ export function crownPlacement(mode,bread,crown,pieces,foods){
     const c=Math.cos(yaw),s=Math.sin(yaw);
     let score=.09*(1-Math.cos(i*Math.PI/6));
     for(const p of pieces){
-      const food=foods[p.food],pc=Math.cos(p.a),ps=Math.sin(p.a);
+      const food=modelFor(p),pc=Math.cos(p.a),ps=Math.sin(p.a);
       let covered=0,sampled=0;
       const stride=Math.max(1,Math.floor(food.contacts.length/12));
       for(let j=0;j<food.contacts.length;j+=stride){
-        const [lx,lz]=food.contacts[j],px=p.x+pc*lx+ps*lz-x,pz=p.z-ps*lx+pc*lz-z;
+        const [local,lz]=food.contacts[j],lx=localX(p,local),px=p.x+pc*lx+ps*lz-x,pz=p.z-ps*lx+pc*lz-z;
         if(crown.mask.alpha((px*c-pz*s)/crown.width+.5,(px*s+pz*c)/crown.height+.5)>.5)covered++;
         sampled++;
       }

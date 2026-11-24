@@ -1,15 +1,17 @@
 import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
 import { editHistory } from './undo-history.js';
-import { mountMusic, musicCredits } from './music.js?v=playback-history';
-import { createBoard, cameraNames } from './board-3d.js?v=free-peel';
+import { chooseSlice } from './slicing.js';
+import { mountMusic, musicCredits } from './music.js?v=opt-in';
+import { createBoard, cameraNames } from './board-3d.js?v=slices';
 import { mountShelf } from './shelf.js?v=shelf-halves';
-import { breads, cloths, ingredients, pantry, openingPercent, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=free-peel';
+import { breads, cloths, ingredients, pantry, canMirror, canSlice, cutServings, wholeCuts, openingPercent, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=slices';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
 const $=selector=>document.querySelector(selector);
 const canvas=$('#scene'),stage=$('#stage'),sheet=$('#sheet'),turn=$('#turn'),knife=$('#knife');
 const pieceAction=$('#piece-action'),undoAction=$('#undo-action');
+const mirrorAction=$('#mirror-action'),sliceAction=$('#slice-action');
 const breadSelection=-2,coverSelection=-3;
 const coverSelect=$('#photo-cover');
 for(const [id,name] of Object.entries(photoCovers))coverSelect.add(new Option(name,id));
@@ -77,9 +79,13 @@ function showHandle(){
   turn.setAttribute('aria-label',cover?'Üst parçayı döndür':'Malzemeyi döndür');
   if(!turn.hidden){turn.style.left=p.x+'px';turn.style.top=p.y+'px';}
   const markedBread=selected===breadSelection&&recipe.strokes.length>0;
+  const piece=recipe.pieces[selected],canEdit=!!board&&editing&&!recipe.closed&&!cover&&!!piece;
+  mirrorAction.hidden=!canEdit||!canMirror(piece.food);
+  mirrorAction.setAttribute('aria-pressed',String(!!piece?.mirrored));
+  sliceAction.hidden=!canEdit||!canSlice(piece.food);
+  if(!sliceAction.hidden)sliceAction.textContent=wholeCuts[piece.food]?'Dilimle':'Kalınlık';
   pieceAction.hidden=!editing||(recipe.closed&&!cover&&!movablePiece(selected))||(!p&&!markedBread);
   if(!pieceAction.hidden){
-    const piece=recipe.pieces[selected];
     const name=cover?'Üst parça':markedBread?breads[recipe.bread].name:piece.food==='ayran'&&openingPercent(piece)>0?'Açık ayran':pantry[piece.food].name;
     pieceAction.setAttribute('aria-label',name+' · Kaldır');
   }
@@ -169,6 +175,21 @@ function removalChoices(){
   if(piece)$('#remove-whole').onclick=()=>{sheet.close();removeSelected();canvas.focus({preventScroll:true});};
 }
 pieceAction.onclick=removalChoices;
+mirrorAction.onclick=()=>{
+  const p=recipe.pieces[selected];if(mirrorAction.hidden||!p)return;
+  checkpoint();if(p.mirrored)delete p.mirrored;else p.mirrored=true;
+  update();canvas.focus({preventScroll:true});
+};
+sliceAction.onclick=()=>{
+  const i=selected,p=recipe.pieces[i];if(sliceAction.hidden||!p)return;
+  chooseSlice(p,81-recipe.pieces.length,{sheet,dialog,apply(thickness){
+    const pieces=cutServings(p,thickness);
+    sheet.close();canvas.focus({preventScroll:true});
+    if(!pieces.length||(!wholeCuts[p.food]&&thickness===(p.thickness||'regular')))return;
+    if(wholeCuts[p.food])pieces.forEach(piece=>board.placeCut(piece,i));
+    checkpoint();recipe.pieces.splice(i,1,...pieces);update(false,pieces[Math.floor(pieces.length/2)]);clink('spread');
+  }});
+};
 undoAction.onclick=()=>{undo();canvas.focus({preventScroll:true});};
 function clink(kind){
   if(music.muted)return;
@@ -489,7 +510,7 @@ function dialog(title,html){
 function endService(){cancelAnimationFrame(teaFrame);drinkService?.close();drinkService=null;}
 sheet.addEventListener('close',()=>{if(!sheet.open)endService();});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
-$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Sofradaki içeceğe dokun. Çayı doldur, ayranın folyosunu soy veya kutuya pipet tak.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Raftaki son dört ekmek yarısını da tabağa sürükleyebilirsin. Sofrada ve Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
+$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Sivri biberi Aynala ile ters çevir. Biberi veya zeytini seçip Dilimle ile halkalara kes. Dilimlerde Kalınlık ile inceliği ayarla.</li><li>Sofradaki içeceğe dokun. Çayı doldur, ayranın folyosunu soy veya kutuya pipet tak.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Raftaki son dört ekmek yarısını da tabağa sürükleyebilirsin. Sofrada ve Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){

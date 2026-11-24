@@ -24,7 +24,7 @@ export const ingredients = [
     ['black-olive','Siyah zeytin','Black olive',.145,.059],
     ['green-olive','Yeşil zeytin','Green olive',.15,.040],
     ['egg-slice','Yumurta','Boiled egg slice',.31,.035],
-    ['pepper','Sivri biber','Green pepper',.41,.027],
+    ['pepper','Sivri biber','Green pepper',.41,.027],['pepper-ring','Biber halkası','Pepper ring',.112,.026],
     ['fried-egg','Sahanda yumurta','Fried egg',.55,.066],
     ['parsley','Maydanoz','Parsley',.24,.006],
     ['pastirma','Pastırma','Cured beef',.44,.013]
@@ -52,6 +52,42 @@ export const cloths={
 export const emptyRecipe=(bread='simit',cloth='kareli')=>({v:2,bread,cloth,closed:false,strokes:[],pieces:[]});
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const round=x=>Math.round(x*1000)/1000;
+export const sliceThickness={thin:{name:'İnce',scale:.5},regular:{name:'Orta',scale:1},thick:{name:'Kalın',scale:1.7}};
+export const wholeCuts={
+  pepper:{ring:'pepper-ring',thin:8,regular:5,thick:3},
+  'black-olive':{ring:'black-ring',thin:4,regular:3,thick:2},
+  'green-olive':{ring:'green-ring',thin:4,regular:3,thick:2}
+};
+const slices=new Set(['pepper-ring','black-ring','green-ring','tomato','cucumber','sausage','onion','red-onion','egg-slice','kasar','white-cheese','pastirma']);
+export const canSlice=food=>Object.hasOwn(wholeCuts,food)||slices.has(food);
+export const canMirror=food=>food==='pepper'||food==='pepper-ring';
+export const localX=(piece,x)=>piece.mirrored?-x:x;
+export function cutServings(piece,thickness){
+  if(!canSlice(piece.food)||!Object.hasOwn(sliceThickness,thickness))return [];
+  const portion={...piece};delete portion.thickness;
+  if(thickness!=='regular')portion.thickness=thickness;
+  const cut=wholeCuts[piece.food];
+  if(!cut)return [portion];
+  const count=cut[thickness],pepper=piece.food==='pepper',size=pantry[piece.food].size;
+  const cs=Math.cos(piece.a),sn=Math.sin(piece.a);
+  const rings=Array.from({length:count},(_,i)=>{
+    const t=(i+.5)/count,bow=Math.sin(Math.PI*t);
+    const x=localX(piece,size*((t-.5)*(pepper?1.04:1.45)+(pepper ? .15*bow : 0)));
+    const z=size*(pepper?(.5-t)*.96+.12*bow:.12*bow);
+    const ring={...portion,food:cut.ring,x:round(clamp(piece.x+x*cs+z*sn,-1.3,1.3)),z:round(clamp(piece.z-x*sn+z*cs,-.8,.8)),
+      a:round((piece.a+localX(piece,(i-count/2)*.37))%(Math.PI*2))};
+    delete ring.marks;
+    if(pepper&&t<.28)ring.taper=true;
+    return ring;
+  });
+  // Keep a seasoning stroke with its nearest cut without multiplying its portion.
+  for(const mark of piece.marks||[]){
+    const t=mark.line.reduce((sum,[u,v])=>sum+(pepper?(u+1024-v)/2048:u/1024),0)/mark.line.length;
+    const ring=rings[clamp(Math.floor(t*count),0,count-1)];
+    (ring.marks||=[]).push({...mark,line:mark.line.map(p=>[...p])});
+  }
+  return rings;
+}
 export function openingPercent(piece){
   const opening=pantry[piece.food]?.opening;
   if(opening==='lid'){
@@ -92,6 +128,9 @@ export function readRecipe(r) {
     const opening=openingPercent(p);
     return {food:p.food,x:round(clamp(p.x,-xLimit,xLimit)),z:round(clamp(p.z,-zLimit,zLimit)),a:round(p.a%(Math.PI*2)),dem,
       water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(opening?(p.food==='ayran'?{peel:opening}:{prepared:true}):{}),
+      ...(canMirror(p.food)&&p.mirrored===true?{mirrored:true}:{}),
+      ...(slices.has(p.food)&&['thin','thick'].includes(p.thickness)?{thickness:p.thickness}:{}),
+      ...(p.food==='pepper-ring'&&p.taper===true?{taper:true}:{}),
       ...(!pantry[p.food].drink&&p.marks?.length?{marks:marks(p.marks)}:{})};
   })};
 }

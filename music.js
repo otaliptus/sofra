@@ -28,7 +28,7 @@ function readBookmark() {
       return { index, seconds: Math.max(0, Math.min(saved.seconds, tracks[index].duration)), paused: saved.paused };
     }
   } catch { /* Playback also works with storage unavailable. */ }
-  return { index: 0, seconds: tracks[0].cue, paused: false };
+  return { index: 0, seconds: tracks[0].cue, paused: true };
 }
 
 export function mountMusic(initiallyMuted, saveMute) {
@@ -41,7 +41,7 @@ export function mountMusic(initiallyMuted, saveMute) {
   const name = document.querySelector('#track-name');
   const time = document.querySelector('#music-time');
   const saved = readBookmark();
-  let index = saved.index, heldPosition = saved.seconds, wanted = !saved.paused;
+  let index = saved.index, heldPosition = saved.seconds, wanted = false;
   let pendingPosition = true, useOriginal = false, failedTracks = 0, lastWrite = 0;
   let lastBookmark = JSON.stringify({file:tracks[index].file, seconds:heldPosition, paused:!wanted});
   audio.volume = 0.28;
@@ -102,6 +102,7 @@ export function mountMusic(initiallyMuted, saveMute) {
     audio.src = useOriginal ? commons + path : commons + 'transcoded/' + path + '/' + filename(track) + '.mp3';
   }
   function start() {
+    if (!wanted || document.hidden) return;
     if (!audio.hasAttribute('src') || audio.error) loadTrack();
     audio.play().catch(show);
     show();
@@ -144,6 +145,9 @@ export function mountMusic(initiallyMuted, saveMute) {
     }
     showTime();
   });
+  audio.addEventListener('play', () => {
+    if (!wanted || document.hidden) pauseMusic();
+  });
   audio.addEventListener('playing', () => { failedTracks = 0; show(); });
   audio.addEventListener('pause', show);
   audio.addEventListener('ended', () => { if (wanted) changeTrack(); });
@@ -160,7 +164,7 @@ export function mountMusic(initiallyMuted, saveMute) {
   });
   play.onclick = () => {
     if (!audio.paused) {
-      wanted = false;audio.pause();remember();show();return;
+      pauseMusic();return;
     }
     wanted = true;failedTracks = 0;
     if (!audio.hasAttribute('src')) useOriginal = false;
@@ -174,14 +178,16 @@ export function mountMusic(initiallyMuted, saveMute) {
     if (!audio.muted && wanted && audio.paused) start();
     show();
   };
-  function unlock(event) {
-    if (wanted && !audio.muted && audio.paused && !radio.contains(event.target)) start();
+  function pauseMusic() {
+    if (!wanted && audio.paused) return;
+    wanted = false;
+    audio.pause();
+    remember();
+    show();
   }
-  for (const event of ['pointerup','keydown','click']) document.addEventListener(event, unlock, true);
-  window.addEventListener('pagehide', remember);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) remember(); });
+  window.addEventListener('pagehide', pauseMusic);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pauseMusic(); });
   show();
-  if (wanted && !audio.muted) start();
   return {
     get muted() { return audio.muted; },
     state() { return { track: tracks[index].title, playing: !audio.paused, muted: audio.muted, seconds: Math.floor(position()) }; }

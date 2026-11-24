@@ -99,3 +99,9 @@ Mouse and touch playthroughs exercised short and full peels, missed and successf
 Ayran foil now holds its position when released and can be grabbed again from the exposed tab. A compact slider allows single-percent adjustments. Each cup carries its own peel amount through table movement, undo, saved breakfasts and photos. Existing half-open ayran loads at 50%. The last crimp stays at the back rim when the cup is fully open.
 
 Mouse and touch checks pulled a lid to 23%, continued to 72%, folded it back to 40%, and reached both endpoints. Verified cancelled edits, keyboard and slider adjustments, undo, draft reload, old shared recipes, a second differently opened cup, straw insertion and a 960px album photo.
+
+The radio now restores the track and cue in a paused state. Playing requires the music panel’s Play button. Hiding the page or navigating away pauses the media element and bookmarks its position.
+
+Added Aynala for whole sivri biber and pepper rings. Dilimle offers thin, medium and thick cuts for peppers and whole olives, with a swipe or Kes to finish. Each ring is independently movable. Kalınlık changes the 3D thickness of sliced vegetables, olives, cheeses, boiled egg, sucuk and pastırma. The pepper cross-section uses original generated artwork. Undo, draft storage and shared recipes preserve the shapes, thickness and seasoning.
+
+Desktop and touch playthroughs checked the reflected pepper silhouette, all eight thin rings, movement and undo, two olive colors, sliced toppings, 960px photos, album remix and radio bookmarks.
