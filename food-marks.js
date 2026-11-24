@@ -366,7 +366,7 @@ export function createCoating(ref,art){
         if(y!==vertices.getY(i)){vertices.setY(i,y);changed=true;}
       }
       if(changed){
-        vertices.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
+        vertices.needsUpdate=true;geometry.boundingBox=null;geometry.computeVertexNormals();geometry.computeBoundingSphere();
       }
       fitted=true;
     }

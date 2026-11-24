@@ -16,6 +16,38 @@ export function aimCamera(camera,orbit,target,distance){
   camera.position.set(Math.sin(yaw)*cos,sin,Math.cos(yaw)*cos).multiplyScalar(distance).add(target);
   camera.lookAt(target);camera.updateMatrixWorld();
 }
+// Keep the usual plate scale until an editable object reaches the edge.
+// Orthographic projection lets the fit pan by just the overflow at each edge.
+export function fitEditorCamera(camera,orbit,boxes,width,height,plateRadius,stackBlend){
+  const {yaw,elevation}=orbit,sy=Math.sin(yaw),cy=Math.cos(yaw),s=Math.sin(elevation),c=Math.cos(elevation);
+  const axes=new THREE.Matrix4().set(
+    cy,    0, -sy,   0,  // screen right
+    -sy*s, c, -cy*s, 0,  // screen up
+    sy*c,  s, cy*c,  0,  // toward the camera
+    0,     0, 0,     1
+  );
+  const food=new THREE.Box3(),projected=new THREE.Box3();
+  for(const box of boxes)food.union(projected.copy(box).applyMatrix4(axes));
+  const rim=plateRadius*s,plateBottom=-rim-.037*c;
+  const top=Math.max(rim+.025*c,food.max.y),left=Math.min(-plateRadius,food.min.x),right=Math.max(plateRadius,food.max.x);
+  const short=Math.min(width,height),margin=Math.min(short*.03,24),bottomMargin=Math.min(height*.17,62);
+  const scale=Math.min(
+    short*.94/(2*plateRadius),
+    (width-2*margin)/(right-left),
+    (height-2*margin)/(top-plateBottom),
+    food.isEmpty()?Infinity:(height-margin-bottomMargin)/(top-food.min.y)
+  );
+  const halfW=width/(2*scale),halfH=height/(2*scale);
+  const x=THREE.MathUtils.clamp(0,right-halfW+margin/scale,left+halfW-margin/scale);
+  const middle=(top+Math.min(plateBottom,food.min.y))/2;
+  const y=THREE.MathUtils.clamp(middle*stackBlend,top-halfH+margin/scale,Math.min(plateBottom+halfH-margin/scale,food.min.y+halfH-bottomMargin/scale));
+  camera.left=x-halfW;camera.right=x+halfW;camera.top=y+halfH;camera.bottom=y-halfH;
+  // The bottom ray must start above the cloth, even on a portrait phone at a low angle.
+  const distance=Math.max(4,food.max.z+.5,-camera.bottom*c/s+.5);
+  camera.far=Math.max(24,distance-Math.min(-plateRadius,food.min.z)+4,distance+(camera.top*c+.04)/s+1);
+  camera.updateProjectionMatrix();
+  aimCamera(camera,orbit,new THREE.Vector3(),distance);
+}
 // Fit the actual edible silhouettes to a square 36 mm gate. The displayed
 // canvas has a different aspect ratio, so only its viewfinder is the film gate.
 export function composePhoto(points,orbit,preset){

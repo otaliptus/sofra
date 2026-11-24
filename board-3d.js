@@ -5,7 +5,7 @@ import { createPhotoFocus } from './photo-focus.js';
 import { createDrinkFactory } from './drinks.js?v=perf';
 import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=gazete';
-import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
+import { aimCamera, composePhoto, fitEditorCamera, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=salca';
 import { breads, cloths, ingredients, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
 import { simitRing } from './simit-ring.js';
@@ -183,7 +183,7 @@ export async function createBoard(canvas){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#615049');
   scene.fog=new THREE.FogExp2(0x615049,.048);
   const editorCamera=new THREE.OrthographicCamera(-1,1,1,-1,.01,24);
-  const photoCamera=new THREE.PerspectiveCamera(35,1,.02,30),origin=new THREE.Vector3();
+  const photoCamera=new THREE.PerspectiveCamera(35,1,.02,30);
   let camera=editorCamera,photoSetup=null,framePixels=1;
   const sun=new THREE.DirectionalLight(0xfff5e7,1.65);sun.position.set(-2.3,5,-1.8);sun.castShadow=true;
   Object.assign(sun.shadow.camera,{left:-1.8,right:1.8,top:1.8,bottom:-1.8,near:.1,far:12});sun.shadow.camera.updateProjectionMatrix();
@@ -289,9 +289,25 @@ export async function createBoard(canvas){
     }
     return points;
   }
+  const editorBoxes=[];
+  let stackBlend=0;
+  function measureEditor(){
+    editorBoxes.length=0;
+    let stackHeight=0;
+    function include(group,drinkBase){
+      const box=new THREE.Box3().setFromObject(group);
+      editorBoxes.push(box);
+      stackHeight=Math.max(stackHeight,drinkBase??box.max.y);
+    }
+    if(bread?.group.visible)include(bread.group);
+    nodes.forEach((node,i)=>include(node,pantry[recipe.pieces[i].food].drink?heights[i]:undefined));
+    if(lid?.group.visible)include(lid.group);
+    stackBlend=THREE.MathUtils.smoothstep(stackHeight,.28,1.18);
+    if(!editPose)orbit={yaw:0,elevation:Math.PI/2-.88*stackBlend};
+  }
   function cameraPosition(){
     if(view)aimCamera(photoCamera,orbit,photoSetup.target,photoSetup.distance);
-    else aimCamera(editorCamera,orbit,origin,4);
+    else if(viewportWidth&&viewportHeight)fitEditorCamera(editorCamera,orbit,editorBoxes,viewportWidth,viewportHeight,plateRadius,stackBlend);
   }
   let viewportWidth=0,viewportHeight=0;
   function resize(draw=true){
@@ -304,14 +320,11 @@ export async function createBoard(canvas){
       photoCamera.aspect=w/h;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan*h/framePixels));
       photoCamera.updateProjectionMatrix();
     }else{
-      const unit=Math.min(w,h)*.94/(2*plateRadius);
-      editorCamera.left=-w/(2*unit);editorCamera.right=-editorCamera.left;
-      editorCamera.top=h/(2*unit);editorCamera.bottom=-editorCamera.top;
-      editorCamera.updateProjectionMatrix();
       if(editorAspect!==w/h){
         editorAspect=w/h;
         if(lid?.group.visible&&!recipe.coverPose&&!recipe.closed)placeCover();
       }
+      measureEditor();
     }
     canvas.parentElement.style.setProperty('--frame',framePixels+'px');cameraPosition();
     if(draw)render();
@@ -479,7 +492,7 @@ export async function createBoard(canvas){
           for(let i=0;i<vertices.count;i++){
             vertices.setY(i,original[i]+(bend?bend(vertices.getX(i),vertices.getZ(i)):0));
           }
-          vertices.needsUpdate=true;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
+          vertices.needsUpdate=true;mesh.geometry.boundingBox=null;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
         }
       }
       lid.bend=bend;lid.group.position.set(x,onCloth?clothHeight+.00085:-.00035,z);lid.group.rotation.set(0,yaw,0);
@@ -585,13 +598,13 @@ export async function createBoard(canvas){
       mesh.geometry=mesh.geometry.clone();
       const vertices=mesh.geometry.attributes.position;
       for(let i=0;i<vertices.count;i++)vertices.setY(i,vertices.getY(i)+offset(vertices.getX(i),vertices.getZ(i)));
-      vertices.needsUpdate=true;
+      vertices.needsUpdate=true;mesh.geometry.boundingBox=null;
       if(mesh===group.children[0])mesh.geometry.computeVertexNormals();
       mesh.geometry.computeBoundingSphere();
     }
     group.userData.draped=true;
   }
-  function sync(r,settle=false){
+  function sync(r,settle=false,fitView=true){
     for(const [piece] of landing){
       const i=placed.findIndex(entry=>entry.piece===piece);
       if(i>=0)position(nodes[i],piece,heights[i]);
@@ -638,6 +651,7 @@ export async function createBoard(canvas){
       placed.push({piece:p,ref,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
     }
     placeCover();
+    if(!view&&fitView){measureEditor();cameraPosition();}
     render();
   }
   function paintLoaf(strokes){
@@ -744,10 +758,11 @@ export async function createBoard(canvas){
     drinkService(id){return foodModel(id).service();},
     adjustCover(pose){settleCover(boundedCoverPose(pose),.48);render();},
     restoreCover(){placeCover();render();},
+    fitEditedCover(){measureEditor();cameraPosition();render(undefined,false);},
     changeCloth(id){setCloth(id);render();},
     frame(){return {target:photoSetup.target.toArray(),distance:photoSetup.distance,tan:photoSetup.tan,aspect:editorAspect};},
     pose(){return {...orbit};},hasEditPose(){return !!editPose;},
-    resetOrbit(){editPose=null;setView(view?'tilt':null);},
+    resetOrbit(overhead=false){editPose=overhead?presetPose('top'):null;setView(view?'tilt':null);},
     drinkSpot(id){
       const radius=foodModel(id).width/2;
       for(const ring of [Math.hypot(.48,.32),.77,.95]){

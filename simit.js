@@ -108,6 +108,7 @@ function keepCover(fromWheel=false){
   if(mode==='edit'){
     recipe.coverPose=pose;recipe.closed=false;
     delete recipe.photoCover;delete recipe.photoCoverPose;
+    board.fitEditedCover();
     lidButton();
   }else{recipe.photoCoverPose=pose;recipe.photoCover='custom';}
   showCoverChoice();showHandle();save();
@@ -127,7 +128,7 @@ $('#lid').onclick=()=>{
   selected=-1;chooseBrush(null);update();
 };
 function update(settle=false,focusPiece){
-  board.sync(recipe,settle);if(focusPiece)selected=recipe.pieces.indexOf(focusPiece);
+  board.sync(recipe,settle,!gesture);if(focusPiece)selected=recipe.pieces.indexOf(focusPiece);
   lidButton();showCloth();showHandle();save();
   describeCanvas();
 }
@@ -462,7 +463,7 @@ canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('dblclick',e=>{
   if(!board)return;
   if(mode==='camera'){if(!board.pickCover(e.clientX,e.clientY))camera('tilt');return;}
-  if(!board.pickCover(e.clientX,e.clientY)&&!board.pick(e.clientX,e.clientY)){board.resetOrbit();showHandle();}
+  if(!board.pickCover(e.clientX,e.clientY)&&!board.pick(e.clientX,e.clientY)){board.resetOrbit(true);showHandle();}
 });
 canvas.addEventListener('pointerdown',begin);canvas.addEventListener('pointermove',move);
 canvas.addEventListener('pointerup',ended);canvas.addEventListener('pointercancel',ended);
@@ -498,7 +499,7 @@ turn.onpointermove=e=>{
     g.moved=true;board.adjustCover({...g.pose,yaw:g.pose.yaw+g.start-next});showHandle();return;
   }
   if(gesture?.kind!=='turn'||e.pointerId!==gesture.id)return;
-  const p=recipe.pieces[selected];p.a=round(gesture.a+gesture.start-angleAt(e,p));board.sync(recipe);
+  const p=recipe.pieces[selected];p.a=round(gesture.a+gesture.start-angleAt(e,p));board.sync(recipe,false,false);
   const h=board.handle(selected);turn.style.left=h.x+'px';turn.style.top=h.y+'px';
 };
 turn.onpointerup=turn.onpointercancel=e=>{
@@ -747,7 +748,7 @@ document.addEventListener('keydown',e=>{
   if(dirs[e.key]){e.preventDefault();const [dx,dz]=dirs[e.key];releasePiece({...p,x:p.x+dx,z:p.z+dz},selected);}
   if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
 });
-new ResizeObserver(showHandle).observe(stage);
+new ResizeObserver(()=>requestAnimationFrame(showHandle)).observe(stage);
 window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
 window.advanceTime=ms=>board?.step(ms);
 try{
