@@ -1,5 +1,5 @@
 import * as THREE from './node_modules/three/build/three.module.js';
-import { teaColors } from './tea-colors.js';
+import { teaColors } from './tea-colors.js?v=servings';
 
 const cupBase=.011;
 const profile=[[.034,0],[.041,.003],[.047,.008],[.052,.020],[.060,.043],[.063,.061],[.061,.077],[.056,.094],[.050,.111],[.048,.126],[.051,.145],[.058,.167],[.066,.191],[.068,.202]];

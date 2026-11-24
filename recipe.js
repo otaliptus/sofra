@@ -58,7 +58,7 @@ export function readRecipe(r) {
       mark.line.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>Number.isInteger(n)&&n>=0&&n<=1024)));
   }
   if(!validMarks(r.strokes)||r.pieces.some(p=>!p||pantry[p.food]?.kind!=='topping'||![p.x,p.z,p.a].every(validNumber)||!validMarks(p.marks??[])))return null;
-  const marks=list=>list.map(({food,line,load})=>({food,line,...(Number.isFinite(load)?{load:clamp(load,.12,1)}:{})}));
+  const marks=list=>list.map(({food,line,load,portion})=>({food,line,...(Number.isFinite(portion)?{portion:clamp(portion,1,2.6)}:{}),...(Number.isFinite(load)?{load:clamp(load,.12,1)}:{})}));
   // Recipes saved before cloth selection were photographed on the Tokat print.
   const cloth=Object.hasOwn(cloths,r.cloth)?r.cloth:'tokat';
   const photoCoverPose=boundedCoverPose(r.photoCoverPose);

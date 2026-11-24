@@ -61,11 +61,22 @@ export function mountMusic(initiallyMuted, saveMute) {
     show();
   }
 
-  function next() {
-    index = (index + 1) % tracks.length;
+  function changeTrack(direction = 1) {
+    index = (index + direction + tracks.length) % tracks.length;
     useOriginal = false;
-    loadTrack();
-    start();
+    if (wanted && (!audio.muted || audio.hasAttribute('src'))) {
+      loadTrack();
+      start();
+    } else {
+      show();
+    }
+  }
+
+  for (const [selector, direction] of [['#music-prev', -1], ['#music-next', 1]]) {
+    document.querySelector(selector).onclick = () => {
+      failedTracks = 0;
+      changeTrack(direction);
+    };
   }
 
   audio.addEventListener('loadedmetadata', () => {
@@ -74,7 +85,7 @@ export function mountMusic(initiallyMuted, saveMute) {
   });
   audio.addEventListener('playing', () => { failedTracks = 0; show(); });
   audio.addEventListener('pause', show);
-  audio.addEventListener('ended', () => { if (wanted) next(); });
+  audio.addEventListener('ended', () => { if (wanted) changeTrack(); });
   audio.addEventListener('error', () => {
     if (!wanted || !audio.error || !audio.hasAttribute('src')) return;
     if (!useOriginal) {
@@ -82,7 +93,7 @@ export function mountMusic(initiallyMuted, saveMute) {
       loadTrack();
       start();
     } else if (++failedTracks < tracks.length) {
-      next();
+      changeTrack();
     } else {
       stop();
     }

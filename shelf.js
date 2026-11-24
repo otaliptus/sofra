@@ -11,10 +11,10 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     if(food.kind==='topping' && items[i-1]?.kind==='spread')button.classList.add('first-solid');
     if(food.kind)button.dataset.kind=food.kind;
     button.dataset.food=food.id;
-    button.setAttribute('aria-label',food.kind ? food.name+({spread:' sür',spice:' serp',sauce:' sık',topping:' ekle'}[food.kind]) : 'Add '+food.name+' · '+food.en);
+    button.setAttribute('aria-label',food.kind ? food.name+({spread:food.id==='menemen'?' kaşıkla':' sür',spice:' serp',sauce:' sık',topping:' ekle'}[food.kind]) : 'Add '+food.name+' · '+food.en);
     if(food.kind&&food.kind!=='topping')button.setAttribute('aria-pressed','false');
     const image=new Image();
-    image.src='./assets/'+(food.asset||food.id)+'.webp';
+    image.src='./assets/'+(food.kind==='sauce'?'bottle-'+food.id:food.asset||food.id)+'.webp';
     image.alt='';
     image.draggable=false;
     const name=document.createElement('span');
@@ -77,7 +77,7 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     }
     const box=board.getBoundingClientRect();
     const inside=event.clientY>=box.top && event.clientY<=box.bottom;
-    if(onHover){gesture.ghost.hidden=inside;onHover(inside?gesture.item.dataset.food:null,event.clientX-box.left,event.clientY-box.top);}
+    if(onHover){const preview=onHover(inside?gesture.item.dataset.food:null,event.clientX-box.left,event.clientY-box.top);gesture.ghost.hidden=inside&&preview!==false;}
     gesture.ghost.style.left=event.clientX+'px';
     gesture.ghost.style.top=event.clientY+'px';
   });

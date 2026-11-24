@@ -52,5 +52,7 @@ export function teaName(d) {
   if (!d.dem && !d.water) return 'Boş bardak';
   if (!d.dem) return 'Sıcak su';
   const ratio = d.dem/(d.dem+d.water);
-  return ratio > .57 ? 'Koyu çay' : ratio < .34 ? 'Açık çay' : 'Tavşan kanı';
+  if (ratio >= .80) return 'Tavşan kanı';
+  if (ratio >= .55) return 'Demli çay';
+  return ratio < .34 ? 'Açık çay' : 'Çay';
 }

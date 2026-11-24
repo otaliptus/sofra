@@ -1,5 +1,5 @@
 import { catalog, clamp, limit, makeDish, starter, readTable, encodeTable, decodeTable, teaName } from './model.js';
-import { loadArt, boxFor, tablePoint, drawTable, drawPour } from './drawing.js';
+import { loadArt, boxFor, tablePoint, drawTable, drawPour } from './drawing.js?v=servings';
 
 import { mountShelf } from './shelf.js';
 

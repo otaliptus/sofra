@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#1c1510">
   <meta name="description" content="Ekmeğini seç, kahvaltını hazırla ve fotoğrafını çek.">
   <link rel="icon" href="data:,"><title>Sofra — Kahvaltı hazırla</title>
-  <link rel="stylesheet" href="workbench.css?v=radio">
+  <link rel="stylesheet" href="workbench.css?v=servings">
   <script>if(location.hash.startsWith('#sofra='))location.replace('table.html'+location.hash)</script>
 </head>
 <body>
@@ -15,7 +15,9 @@
       <button id="back" hidden>Geri</button>
       <label id="cover-control" hidden><span>Üst parça</span> <select id="photo-cover"></select></label>
       <div id="radio" role="group" aria-label="Müzik">
+        <button id="music-prev" class="track-step previous" type="button" title="Önceki parça" aria-label="Önceki parça"><span aria-hidden="true"></span></button>
         <button id="music-play" type="button" aria-label="Müziği çal" title="Müziği çal"><span aria-hidden="true"></span></button>
+        <button id="music-next" class="track-step" type="button" title="Sonraki parça" aria-label="Sonraki parça"><span aria-hidden="true"></span></button>
         <span id="track-name" aria-live="polite">Muhabbet</span>
         <button id="audio" type="button" aria-label="Sesi kapat" title="Sesi kapat">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -35,6 +37,7 @@
       <button id="piece-action" hidden>Kaldır</button>
       <div id="cloths" role="group" aria-label="Sofra bezi"></div>
       <div id="knife" aria-hidden="true" hidden><img id="utensil" alt="" src="./assets/knife.webp"><img id="knife-load" alt="" hidden></div>
+      <button id="put-down" type="button" hidden><span></span><b aria-hidden="true">×</b></button>
       <output id="coach" role="status">Sofra hazırlanıyor…</output>
     </section>
     <footer>
@@ -48,6 +51,6 @@
     </footer>
   </main>
   <dialog id="sheet"><div id="sheet-content"></div></dialog>
-  <script type="module" src="simit.js?v=radio"></script>
+  <script type="module" src="simit.js?v=servings"></script>
 </body>
 </html>

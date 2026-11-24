@@ -1,5 +1,5 @@
 import { catalog, clamp } from './model.js';
-import { teaColors } from './tea-colors.js';
+import { teaColors } from './tea-colors.js?v=servings';
 
 export const images = {};
 export async function loadArt() {

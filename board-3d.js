@@ -1,11 +1,12 @@
 import * as THREE from './node_modules/three/build/three.module.js';
-import { images as teaImages } from './drawing.js';
+import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
-import { createTeaService } from './tea-glass.js';
+import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
-import { createCoating } from './food-marks.js';
+import { createCoating } from './food-marks.js?v=servings';
 import { breads, cloths, ingredients, clamp, photoCoverFor, boundedCoverPose } from './recipe.js?v=movable-cover';
+import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement } from './bread-crown.js';
 
 
@@ -19,8 +20,8 @@ function texture(source){
 async function loadImage(asset){
   const img=new Image();img.src='./assets/'+asset+'.webp';await img.decode();return img;
 }
-function outline(image){
-  const w=120,h=Math.max(12,Math.round(w*image.height/image.width));
+function outline(image,w=120){
+  const h=Math.max(12,Math.round(w*image.height/image.width));
   const canvas=canvas2d(w,h),c=canvas.getContext('2d',{willReadFrequently:true});
   c.drawImage(image,0,0,w,h);
   const pixels=c.getImageData(0,0,w,h).data;
@@ -77,8 +78,8 @@ function sideGeometry(mask,width,height,depth,bread,topY,crown){
   geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   return geo;
 }
-function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,cutFace=null}={}){
-  const height=width*image.height/image.width,mask=outline(image),group=new THREE.Group();
+function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,cutFace=null,ring=false}={}){
+  const height=width*image.height/image.width,mask=outline(image,ring?384:120),group=new THREE.Group();
   // Fit a smooth dome to the orange yolk. The white gleam in its photograph
   // is a reflection, so it must never become a depression in the mesh.
   let yolk;
@@ -95,7 +96,8 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
       yolk={x,y,rx:clamp(2*Math.sqrt(Math.max(0,sxx/total-x*x)),.16,.40),ry:clamp(2*Math.sqrt(Math.max(0,syy/total-y*y)),.16,.40)};
     }
   }
-  const capHeight=cutFace&&crownHeight(mask,depth);
+  const shell=ring&&simitRing(mask,width,height,depth,!!cutFace);
+  const capHeight=shell?.topY||(cutFace&&crownHeight(mask,depth));
   function topY(u,v){
     if(capHeight)return capHeight(u,v);
     if(dome)return depth*(.14+.86*Math.sqrt(Math.max(0,1-4*((u-.5)**2+(v-.5)**2))));
@@ -104,18 +106,22 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
     return depth*(.16+.84*Math.exp(-1.22*r*r));
   }
   const segments=cutFace?64:dome||flex||egg?32:1,map=texture(image);
-  const geom=new THREE.PlaneGeometry(width,height,segments,segments);geom.rotateX(-Math.PI/2);
-  const points=geom.attributes.position;
-  for(let i=0;i<points.count;i++)points.setY(i,topY(points.getX(i)/width+.5,points.getZ(i)/height+.5));
-  geom.computeVertexNormals();
-  const top=new THREE.Mesh(geom,new THREE.MeshLambertMaterial({map,alphaTest:.48,side:THREE.DoubleSide}));
+  const geom=shell?shell.top:new THREE.PlaneGeometry(width,height,segments,segments);
+  if(!shell){
+    geom.rotateX(-Math.PI/2);const points=geom.attributes.position;
+    for(let i=0;i<points.count;i++)points.setY(i,topY(points.getX(i)/width+.5,points.getZ(i)/height+.5));
+    geom.computeVertexNormals();
+  }
+  const top=new THREE.Mesh(geom,new THREE.MeshLambertMaterial({map,alphaTest:shell?0:.48,side:THREE.DoubleSide}));
   top.castShadow=true;top.receiveShadow=true;
-  const sides=new THREE.Mesh(sideGeometry(mask,width,height,depth,!!crust,topY,!!cutFace),new THREE.MeshLambertMaterial({map:crust||map,vertexColors:true,side:THREE.DoubleSide}));
+  const sides=new THREE.Mesh(shell?shell.sides:sideGeometry(mask,width,height,depth,!!crust,topY,!!cutFace),new THREE.MeshLambertMaterial({map:crust||map,vertexColors:!shell,side:THREE.DoubleSide}));
   sides.castShadow=true;sides.receiveShadow=true;group.add(top,sides);
-  if(cutFace){
-    const underside=new THREE.Mesh(new THREE.PlaneGeometry(width,height),
-      new THREE.MeshLambertMaterial({map:texture(cutFace),alphaTest:.48,side:THREE.BackSide}));
-    underside.rotation.x=-Math.PI/2;underside.receiveShadow=true;group.add(underside);
+  if(cutFace||shell){
+    const bottom=shell?shell.bottom:new THREE.PlaneGeometry(width,height);
+    const underside=new THREE.Mesh(bottom,new THREE.MeshLambertMaterial({
+      map:cutFace?texture(cutFace):map,alphaTest:shell?0:.48,side:shell?THREE.FrontSide:THREE.BackSide}));
+    if(!shell)underside.rotation.x=-Math.PI/2;
+    underside.receiveShadow=true;group.add(underside);
   }
   const contacts=[];
   const contactGrid=cutFace?23:13;
@@ -157,7 +163,7 @@ export async function createBoard(canvas){
   sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.00014;sun.shadow.normalBias=.0005;sun.shadow.radius=2.5;
   scene.add(sun,new THREE.AmbientLight(0xffffff,1.55));
   const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
-    ...ingredients.filter(f=>f.kind==='topping').map(f=>f.asset||f.id),'smear-cream','smear-jam','smear-menemen']);
+    ...ingredients.filter(f=>f.kind==='topping').map(f=>f.asset||f.id),'smear-cream','smear-jam','servings','serving-relief']);
   const art=Object.fromEntries(await Promise.all(Array.from(ids).map(async id=>[id,await loadImage(id)])));
   teaImages.cay=art.cay;
 
@@ -174,9 +180,8 @@ export async function createBoard(canvas){
     if(breadId===id)return;
     if(bread)bread.group.visible=false;
     if(!loafCache.has(id)){
-      const spec=breads[id],food=makeFood(art[spec.asset],1,spec.depth,{crust:crusts[id]});
-      food.coating=createCoating(food.image,food.width,food.height,art);
-      food.top.material.map=texture(food.coating.surface);scene.add(food.group);loafCache.set(id,food);
+      const spec=breads[id],food=makeFood(art[spec.asset],1,spec.depth,{crust:crusts[id],ring:id==='simit'});
+      scene.add(food.group);loafCache.set(id,food);
     }
     bread=loafCache.get(id);breadId=id;bread.group.visible=true;
   }
@@ -282,17 +287,22 @@ export async function createBoard(canvas){
     }
     surface.constant=-y;ray.ray.intersectPlane(surface,point3);return {x:point3.x,z:point3.z};
   }
-  function pick(clientX,clientY){
+  function pick(clientX,clientY,relief=true){
     setRay(clientX,clientY);
     const faces=[bread.top],indices=new Map([[bread.top,-1]]);
+    if(relief&&bread.coating?.mesh.visible){faces.push(bread.coating.mesh);indices.set(bread.coating.mesh,-1);}
     nodes.forEach((node,i)=>{
       const parts=recipe.pieces[i].food==='cay'?[node.getObjectByName('saucer'),node.getObjectByName('glass')]:[node.children[0]];
+      const coating=coatings.get(recipe.pieces[i]);
+      if(relief&&coating?.mesh.visible)parts.push(coating.mesh);
       for(const face of parts){faces.push(face);indices.set(face,i);}
     });
     const hits=ray.intersectObjects(faces,false);
     for(const h of hits){
       const index=indices.get(h.object);
       const ref=index<0?bread:blanks[recipe.pieces[index].food],u=h.uv.x,v=1-h.uv.y;
+      const coat=index<0?bread.coating:coatings.get(recipe.pieces[index]);
+      if(coat?.mesh===h.object&&coat.rise(u,v)<.0005)continue;
       if(ref!==blanks.cay&&ref.mask.alpha(u,v)<.49)continue;
       return {i:index,u,v,x:h.point.x,z:h.point.z,y:h.point.y,distance:h.distance};
     }
@@ -303,14 +313,14 @@ export async function createBoard(canvas){
   }
   function hasBread(x,z){return bread.mask.alpha(x/bread.width+.5,z/bread.height+.5)>.48;}
   function heightAt(x,z,count,exclude){
-    let high=hasBread(x,z)?bread.depth:tableHeight(x,z);
+    let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
     for(let i=0;i<count;i++){
       if(i===exclude)continue;
       const p=recipe.pieces[i],food=blanks[p.food],[lx,lz]=relative(p,x,z);
       const u=lx/food.width+.5,v=lz/food.height+.5;
       if(food.mask.alpha(u,v)<.47)continue;
       const offset=offsets[i]?.(lx,lz)||0;
-      high=Math.max(high,heights[i]+offset+food.topY(u,v));
+      high=Math.max(high,heights[i]+offset+food.topY(u,v)+(coatings.get(p)?.rise(u,v)||0));
     }
     return high;
   }
@@ -345,7 +355,7 @@ export async function createBoard(canvas){
     const mode=view?photoCoverFor(recipe):(recipe.closed?'full':'open');
     if(mode==='open')return;
     if(!crownCache.has(breadId)){
-      const b=breads[breadId],upper=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[breadId],cutFace:art[b.asset]});
+      const b=breads[breadId],upper=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[breadId],cutFace:art[b.asset],ring:breadId==='simit'});
       crownCache.set(breadId,upper);scene.add(upper.group);
     }
     lid=crownCache.get(breadId);lid.group.visible=true;
@@ -353,6 +363,20 @@ export async function createBoard(canvas){
     settleCover(pose,mode==='half'||mode==='custom' ? .48 : .28);
   }
   function settleCover({x,z,yaw},maxSlope){
+    if(breadId==='simit'){
+      // The sliced ring yields over a filling rather than balancing the whole
+      // crown on the highest olive. Reuse the topping contact solver at a
+      // shallower slope, with original vertices so dragging cannot accumulate bends.
+      const bend=drape({x,z,a:yaw},recipe.pieces.length,0,lid,.32);
+      for(const mesh of lid.group.children){
+        const vertices=mesh.geometry.attributes.position;
+        const original=mesh.userData.unbentY??=Float32Array.from({length:vertices.count},(_,i)=>vertices.getY(i));
+        for(let i=0;i<vertices.count;i++)vertices.setY(i,original[i]+bend(vertices.getX(i),vertices.getZ(i)));
+        vertices.needsUpdate=true;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
+      }
+      lid.bend=bend;lid.group.position.set(x,-.00035,z);lid.group.rotation.set(0,yaw,0);
+      return;
+    }
     const c=Math.cos(yaw),s=Math.sin(yaw);
     const samples=lid.contacts.map(([lx,lz])=>heightAt(x+c*lx+s*lz,z-s*lx+c*lz,recipe.pieces.length,-1));
     const plane=restingPlane(lid.contacts,samples,maxSlope);
@@ -366,7 +390,7 @@ export async function createBoard(canvas){
   function coverHandle(){
     if(!coverPose())return null;
     const [x,z]=lid.perimeter[0];
-    const edge=lid.group.localToWorld(new THREE.Vector3(x,lid.topY(x/lid.width+.5,z/lid.height+.5),z));
+    const edge=lid.group.localToWorld(new THREE.Vector3(x,lid.topY(x/lid.width+.5,z/lid.height+.5)+(lid.bend?.(x,z)||0),z));
     const point=screen(edge.x,edge.y,edge.z),center=screen(lid.group.position.x,edge.y,lid.group.position.z);
     const dx=point.x-center.x,dy=point.y-center.y,length=Math.hypot(dx,dy)||1;
     return {x:clamp(point.x+16*dx/length,23,canvas.clientWidth-23),y:clamp(point.y+16*dy/length,23,canvas.clientHeight-23),height:edge.y};
@@ -382,7 +406,7 @@ export async function createBoard(canvas){
     if(foreground&&foreground.distance<hit.distance-.001)return null;
     const rim=ray.intersectObject(plate,false)[0];
     if(rim&&rim.distance<hit.distance-.001)return null;
-    return lid.group.worldToLocal(hit.point.clone());
+    const anchor=lid.group.worldToLocal(hit.point.clone());anchor.y-=lid.bend?.(anchor.x,anchor.z)||0;return anchor;
   }
   function coverPlanePoint(clientX,clientY,height){
     setRay(clientX,clientY);surface.constant=-height;
@@ -396,7 +420,8 @@ export async function createBoard(canvas){
     clientX=clamp(clientX,rect.left+8,rect.right-8);
     clientY=clamp(clientY,rect.top+8,rect.bottom-8);
     for(let pass=0;pass<2;pass++){
-      const held=lid.group.localToWorld(anchor.clone()),at=coverPlanePoint(clientX,clientY,held.y);
+      const contact=anchor.clone();contact.y+=lid.bend?.(contact.x,contact.z)||0;
+      const held=lid.group.localToWorld(contact),at=coverPlanePoint(clientX,clientY,held.y);
       if(!at)break;
       const dx=at.x-held.x,dz=at.z-held.z;
       if(Math.hypot(dx,dz)<.0008)break;
@@ -405,15 +430,14 @@ export async function createBoard(canvas){
     }
     render();
   }
-  function drape(p,index,base){
-    const ref=blanks[p.food],c=Math.cos(p.a),s=Math.sin(p.a);
+  function drape(p,index,base,ref=blanks[p.food],stiff=p.food==='kasar'?.50:p.food.includes('onion')?.70:.9){
+    const c=Math.cos(p.a),s=Math.sin(p.a);
     const steps=28,stride=steps+1,grid=new Float32Array(stride*stride);
-    const stiff=p.food==='kasar' ? .50 : p.food.includes('onion') ? .70 : .9;
     // A nearby high spot lifts a region of the slice through its own stiffness.
     // Propagate those contact heights, then relax the surface between contacts.
     for(let row=0;row<=steps;row++)for(let col=0;col<=steps;col++){
       const x=(col/steps-.5)*ref.width,z=(row/steps-.5)*ref.height;
-      grid[row*stride+col]=heightAt(p.x+x*c+z*s,p.z-x*s+z*c,index,-1);
+      grid[row*stride+col]=!p.food&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+x*c+z*s,p.z-x*s+z*c,index,-1);
     }
     const dx=ref.width/steps*stiff,dz=ref.height/steps*stiff,diagonal=Math.hypot(dx,dz);
     function sweep(start,end,dir){
@@ -457,12 +481,14 @@ export async function createBoard(canvas){
     recipe=r;setCloth(r.cloth);activateBread(r.bread);landing.clear();
     for(const n of nodes){
       scene.remove(n);
+      if(n.children[2]?.userData.coating)n.remove(n.children[2]);
       if(n.userData.draped)for(const mesh of n.children)mesh.geometry.dispose();
     }
     const present=new Set(r.pieces);
     for(const [p,coat] of coatings)if(!present.has(p)){
-      coat.material.map.dispose();coat.material.dispose();coatings.delete(p);
+      coat.dispose();coatings.delete(p);
     }
+    paintLoaf(r.strokes);
     nodes=[];heights=[];offsets=[];
     for(let i=0;i<r.pieces.length;i++){
       const p=r.pieces[i],ref=blanks[p.food],{height,stable,offset}=support(p,i,-1,true);
@@ -471,24 +497,29 @@ export async function createBoard(canvas){
       const shape=ref.flex?drape(p,i,height):offset;
       if(shape)conform(g,shape);
       offsets.push(shape);
-      heights.push(height);position(g,p,height);scene.add(g);nodes.push(g);
+      heights.push(height);position(g,p,height);scene.add(g);nodes.push(g);paintPiece(p,i);
     }
     placeCover();
-    paintBread(r.strokes);
+    render();
+  }
+  function paintLoaf(strokes){
+    if(!bread.coating){
+      if(!strokes.length)return;
+      bread.coating=createCoating(bread,art);bread.group.add(bread.coating.mesh);
+    }
+    bread.coating.update(strokes);
+  }
+  function paintPiece(p,i){
+    let coat=coatings.get(p);
+    if(!coat){
+      if(!p.marks?.length)return;
+      coat=createCoating(blanks[p.food],art);coat.mesh.userData.coating=true;coatings.set(p,coat);
+    }
+    coat.update(p.marks||[],offsets[i]);
+    if(coat.mesh.parent!==nodes[i])nodes[i].add(coat.mesh);
   }
   function paintBread(strokes){
-    if(bread.coating.update(strokes))bread.top.material.map.needsUpdate=true;
-    recipe.pieces.forEach((p,i)=>{
-      if(!p.marks?.length&&!coatings.has(p))return;
-      const ref=blanks[p.food];let coat=coatings.get(p);
-      if(!coat){
-        const paint=createCoating(ref.image,ref.width,ref.height,art),material=ref.top.material.clone();
-        material.map=texture(paint.surface);coat={paint,material};coatings.set(p,coat);
-      }
-      if(coat.paint.update(p.marks||[]))coat.material.map.needsUpdate=true;
-      if(nodes[i])nodes[i].children[0].material=coat.material;
-    });
-    render();
+    paintLoaf(strokes);recipe.pieces.forEach(paintPiece);render();
   }
   function step(ms){
     clock+=ms;let moving=false;
@@ -517,7 +548,9 @@ export async function createBoard(canvas){
     if(ghost?.userData.food!==p?.food){if(ghost)scene.remove(ghost);ghost=null;}
     if(p){
       if(!ghost){const ref=blanks[p.food];ghost=(ref.forFill?ref.forFill(p.dem,p.water):ref.group).clone();ghost.userData.food=p.food;scene.add(ghost);}
-      if(hide>=0)ghost.children[0].material=nodes[hide].children[0].material;
+      const coat=hide>=0&&coatings.get(recipe.pieces[hide]);
+      if(ghost.children.at(-1)?.userData.coating && ghost.children.at(-1).geometry!==coat?.mesh.geometry)ghost.remove(ghost.children.at(-1));
+      if(coat&&!ghost.children.at(-1)?.userData.coating)ghost.add(coat.mesh.clone());
       position(ghost,p,support(p,recipe.pieces.length,hide).height+.10);
       ghost.rotation.z=clamp(swing,-.21,.21)+.035*Math.sin(10*p.x+3*p.z);
     } render();
@@ -557,6 +590,7 @@ export async function createBoard(canvas){
       }
       return {x:0,z:0};
     },
+    breadUV(x,z){return {i:-1,u:x/bread.width+.5,v:z/bread.height+.5,x,z};},
     land(p){landing.set(p,clock);run();},
 
     handle(i){const p=recipe.pieces[i];if(!p)return null;const edge=blanks[p.food].width*.5;const height=heights[i]+blanks[p.food].depth+(offsets[i]?.(edge,0)||0);return {...screen(p.x+Math.cos(p.a)*edge,height,p.z-Math.sin(p.a)*edge),height};}
