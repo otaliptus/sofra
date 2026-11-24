@@ -54,29 +54,47 @@ function periodKey(sort,time){return sort==='day'?'d:'+time.day:sort==='week'?'w
 function item(row){
   const {scene,...meta}=row;return {...meta,...JSON.parse(scene)};
 }
-async function feed(url,env,ctx,time){
-  const sort=url.searchParams.get('sort')||'new';
-  if(!['new','day','week','all'].includes(sort))fail(400,'Sıralama geçersiz.');
-  const period=periodKey(sort,time),cursor=url.searchParams.get('after');
+export function feedQuery(sort,time,cursor){
+  const period=periodKey(sort,time);
   let total=0,created=0,id='';
   if(cursor){
     if(!/^\d{1,10}\.\d{1,15}\.[a-f0-9]{32}$/.test(cursor))fail(400,'Sayfa geçersiz.');
     const parts=cursor.split('.');total=Number(parts[0]);created=Number(parts[1]);id=parts[2];
   }
-  // Cache only the finite set of first pages, never cookies or personal flags.
-  const key=new Request(url.origin+root+'?sort='+sort+'&epoch='+period);
-  if(!cursor){const hit=await caches.default.match(key);if(hit)return hit;}
   let sql,values;
   if(sort==='new'){
     sql='SELECT p.id,p.title,p.created,p.scene,coalesce(s.total,0) AS total FROM posts p LEFT JOIN scores s ON s.period=\'all\' AND s.post=p.id WHERE p.hidden=0'+
       (cursor?' AND (p.created,p.id)<(?,?)':'')+' ORDER BY p.created DESC,p.id DESC LIMIT ?';
-    values=cursor?[created,id]:[];
+    values=cursor?[created,id,rowLimit+1]:[rowLimit+1];
   }else{
-    sql='SELECT p.id,p.title,p.created,p.scene,s.total FROM scores s JOIN posts p ON p.id=s.post WHERE s.period=? AND p.hidden=0'+
-      (cursor?' AND (s.total,s.created,s.post)<(?,?,?)':'')+' ORDER BY s.total DESC,s.created DESC,s.post DESC LIMIT ?';
-    values=cursor?[period,total,created,id]:[period];
+    // Fill remaining slots with recipes published in the period that have no votes yet.
+    const zeroCursor=cursor&&total===0;
+    const since=sort==='all'?0:Date.parse(time[sort]+'T00:00:00+03:00');
+    sql=`WITH ranked AS MATERIALIZED (
+      SELECT s.post AS id,s.created,s.total FROM scores s JOIN posts p ON p.id=s.post
+      WHERE s.period=? AND p.hidden=0 ${cursor?'AND (s.total,s.created,s.post)<(?,?,?)':''}
+      ORDER BY s.total DESC,s.created DESC,s.post DESC LIMIT ?
+    ), unvoted AS (
+      SELECT p.id,p.created,0 AS total FROM posts p WHERE p.hidden=0 AND p.created>=?
+      ${zeroCursor?'AND (p.created,p.id)<(?,?)':''}
+      AND NOT EXISTS (SELECT 1 FROM scores s WHERE s.period=? AND s.post=p.id)
+      ORDER BY p.created DESC,p.id DESC LIMIT (? - (SELECT count(*) FROM ranked))
+    )
+    SELECT p.id,p.title,p.created,p.scene,c.total
+    FROM (SELECT * FROM ranked UNION ALL SELECT * FROM unvoted) c JOIN posts p ON p.id=c.id
+    ORDER BY c.total DESC,c.created DESC,c.id DESC`;
+    values=[period,...(cursor?[total,created,id]:[]),rowLimit+1,since,...(zeroCursor?[created,id]:[]),period,rowLimit+1];
   }
-  const {results}=await env.DB.prepare(sql).bind(...values,rowLimit+1).all();
+  return {sql,values};
+}
+async function feed(url,env,ctx,time){
+  const sort=url.searchParams.get('sort')||'new',cursor=url.searchParams.get('after');
+  if(!['new','day','week','all'].includes(sort))fail(400,'Sıralama geçersiz.');
+  // Cache only the finite set of first pages, never cookies or personal flags.
+  const key=new Request(url.origin+root+'?sort='+sort+'&epoch='+periodKey(sort,time));
+  if(!cursor){const hit=await caches.default.match(key);if(hit)return hit;}
+  const {sql,values}=feedQuery(sort,time,cursor);
+  const {results}=await env.DB.prepare(sql).bind(...values).all();
   const rows=results.slice(0,rowLimit),last=rows.at(-1);
   const response=json({posts:rows.map(item),after:results.length>rowLimit?[last.total,last.created,last.id].join('.'):null},200,
     cursor?{}:{'Cache-Control':'public, max-age=0, s-maxage=20'});

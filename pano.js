@@ -75,10 +75,11 @@ async function load(reset){
     pageToken=data.after;more.hidden=!pageToken;notice.textContent='';
     if(!known.size){
       $('#empty').hidden=false;
-      $('#empty h2').textContent=sort==='new'?'İlk sofrayı sen as.':'Henüz oy yok.';
-      $('#empty p').textContent=sort==='new'?'Kahvaltını hazırla, fotoğrafını çek ve “Panoya as”a dokun.':'Yeni asılanlardan beğendiğin bir tarife oy ver.';
-      const action=$('#empty a');action.textContent=sort==='new'?'Soframı hazırla ↗':'Yeni asılanlara bak';action.href='./';
-      action.onclick=sort==='new'?null:e=>{e.preventDefault();setSort('new');};
+      const period=sort==='day'||sort==='week';
+      $('#empty h2').textContent=period?(sort==='day'?'Bugün henüz tarif veya oy yok.':'Bu hafta henüz tarif veya oy yok.'):'İlk sofrayı sen as.';
+      $('#empty p').textContent=period?'Bir tarif as veya panodaki bir tarife oy ver.':'Kahvaltını hazırla, fotoğrafını çek ve “Panoya as”a dokun.';
+      const action=$('#empty a');action.textContent=period?'Yeni tariflere bak':'Soframı hazırla ↗';action.href=period?'./pano.html':'./';
+      action.onclick=period?e=>{e.preventDefault();setSort('new');}:null;
     }
   }catch(error){if(gen===revision){notice.textContent=error.message;more.textContent='Tekrar dene';more.hidden=false;}}
   finally{if(gen===revision)more.disabled=false;}

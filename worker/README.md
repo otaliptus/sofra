@@ -10,6 +10,8 @@ A browser can vote once on each other person's recipe per Istanbul calendar day.
 
 Each browser can publish up to 10 recipes per Istanbul calendar day. The daily total includes recipes the author later removes.
 
+The daily and weekly boards include recipes published or voted on during that period. Recipes with votes lead, followed by new recipes with zero votes in reverse publication order. All-time rankings include every visible recipe.
+
 ## Moderating the board
 
 Open the sofra-pano database in the Cloudflare D1 console using an account with D1 access. This query lists reports for visible posts.

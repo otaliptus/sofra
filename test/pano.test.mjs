@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {calendar,normalizePost} from '../worker/index.js';
+import {calendar,feedQuery,normalizePost} from '../worker/index.js';
 import {emptyRecipe,readRecipe,shareableRecipe} from '../recipe.js';
 import {readTable} from '../model.js';
 
@@ -13,6 +13,31 @@ function migrate(db,name){
 test('Istanbul voting day and Monday week change at local midnight',()=>{
   assert.deepEqual(calendar(Date.parse('2026-11-22T20:59:59Z')),{day:'2026-11-22',week:'2026-11-16'});
   assert.deepEqual(calendar(Date.parse('2026-11-22T21:00:00Z')),{day:'2026-11-23',week:'2026-11-23'});
+});
+test('rankings show new recipes at zero and retain older recipes voted on in the period',()=>{
+  const db=new DatabaseSync(':memory:');
+  for(const name of ['0001_pano','0002_storage_budget','0003_browser_post_limit'])migrate(db,name);
+  const today=Date.parse('2026-11-25T00:00:00+03:00'),time=calendar(today);
+  const id=n=>n.toString(16).padStart(32,'0');
+  const post=(n,created,hidden=0)=>db.prepare('INSERT INTO posts VALUES(?,?,?,?,?,?,?,?)')
+    .run(id(n),'author'+n,'tarif','{}',created,calendar(created).day,'net'+n,hidden);
+  const vote=n=>db.prepare('INSERT INTO votes VALUES(?,?,?,?,?)').run(id(n),'voter',time.day,time.week,'wifi');
+  const page=(sort,cursor)=>{
+    const {sql,values}=feedQuery(sort,time,cursor);
+    return db.prepare(sql).all(...values).map(row=>[parseInt(row.id,16),row.total]);
+  };
+  post(1,today-8*86400000);vote(1); // Last week's recipe earns a vote today.
+  post(2,today-1);post(3,today-8*86400000);post(4,today+1,1);vote(4);
+  for(let n=5;n<16;n++)post(n,today); // Identical timestamps exercise the ID tiebreak.
+  assert.deepEqual(page('day').slice(0,3),[[1,1],[15,0],[14,0]]);
+  const cursor='0.'+today+'.'+id(9);
+  assert.deepEqual(page('day',cursor),[[8,0],[7,0],[6,0],[5,0]]);
+  assert.deepEqual(page('week',cursor).at(-1),[2,0]);
+  assert.deepEqual(page('all',cursor).slice(-2),[[2,0],[3,0]]);
+  assert.deepEqual(page('day','1.'+(today-8*86400000)+'.'+id(1))[0],[15,0]);
+  vote(7);
+  assert.deepEqual(page('day').slice(0,3),[[7,1],[1,1],[15,0]]);
+  db.close();
 });
 test('shared recipes accept catalogue strings and bounded painting work',()=>{
   const recipe=emptyRecipe();

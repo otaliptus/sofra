@@ -152,13 +152,16 @@ function toggleBase(){
   }
   update();
 }
+function removeCover(){
+  recipe.coverRemoved=true;recipe.closed=false;
+  delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
+}
 function removeSelected(){
   if(mode!=='edit'||gesture)return;
   const cover=selected===coverSelection;
   if(cover){
     if(recipe.coverRemoved)return;
-    checkpoint();recipe.coverRemoved=true;recipe.closed=false;
-    delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
+    checkpoint();removeCover();
   }else if(selected===breadSelection){
     if(recipe.baseRemoved||recipe.closed)return;
     toggleBase();return;
@@ -565,7 +568,14 @@ $('#fresh').onclick=()=>{
   const options=Object.entries(breads).map(([id,b])=>'<button data-bread="'+id+'" '+(id==='simit'?'id="plain"':'')+'><img alt="" src="'+assetURL(b.asset)+'"><span>'+b.name+'</span></button>').join('');
   const restore=recipe.coverRemoved?'<button id="restore-cover">Üst parçayı geri koy</button>':'';
   const baseAction='<button id="toggle-base">'+(recipe.baseRemoved?'Alt parçayı geri koy':'Alt parçayı kaldır')+'</button>';
-  dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons">'+baseAction+restore+'<button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
+  const hasBread=!recipe.baseRemoved||!recipe.coverRemoved||recipe.pieces.some(p=>pantry[p.food].bread);
+  dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons"><button id="remove-breads"'+(hasBread?'':' disabled')+'>Tüm ekmekleri kaldır</button>'+baseAction+restore+'<button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
+  $('#remove-breads').onclick=()=>{
+    sheet.close();if(mode==='camera')leaveCamera();
+    checkpoint();removeCover();recipe.baseRemoved=true;recipe.strokes=[];
+    recipe.pieces=recipe.pieces.filter(p=>!pantry[p.food].bread);
+    selected=-1;chooseBrush(null);update();canvas.focus({preventScroll:true});
+  };
   $('#toggle-base').onclick=()=>{
     sheet.close();if(mode==='camera')leaveCamera();toggleBase();
     canvas.focus({preventScroll:true});
