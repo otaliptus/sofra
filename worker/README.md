@@ -29,3 +29,5 @@ Setting `hidden = 0` restores the post. Hiding the post blocks its permalink and
 The board uses Workers Static Assets, a Worker rate-limit binding and one D1 database. The game, feed UI and food art ship as static assets. Rendering happens in visitors' browsers. Daily publication, voting and report budgets are enforced in the same database transaction as each action. Current global budgets are 100 posts, 1,500 votes and 150 reports per day, with a 220 MiB recipe budget that reserves 3 KiB per post for overhead. Smaller per-browser and per-network limits also apply. These are application settings. Cloudflare quotas are shared across the account.
 
 Apply new migrations with `npx wrangler d1 migrations apply sofra-pano --remote` before deploying with `npx wrangler deploy`. The daily scheduled job clears expired voting receipts, old period scores and quota counters.
+
+HTML page opens use one Worker request to issue a fresh content-security-policy nonce for the Cloudflare bot check. Scripts, styles and food art use static asset delivery.

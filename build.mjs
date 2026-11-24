@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
+import { securityHeaders } from './worker/security-headers.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const output = join(root, 'dist');
@@ -73,13 +74,11 @@ await writeFile(join(output, 'index.html'), html
   .replace(/href="workbench\.css[^"]*"/, 'href="' + stylesheet + '"')
   .replace('./assets/knife.webp', artURLs.knife)
   .replace('</head>', '  ' + preload + '\n</head>'));
-const redirectScript=html.match(/<script>([^<]+)<\/script>/)[1];
+const redirectScript=html.match(/<script id="legacy-redirect">([^<]+)<\/script>/)[1];
 const redirectHash=createHash('sha256').update(redirectScript).digest('base64');
+const staticHeaders=Object.entries(securityHeaders(`'sha256-${redirectHash}'`)).map(([key,value])=>'  '+key+': '+value).join('\n');
 await writeFile(join(output,'_headers'),`/*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-${redirectHash}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' https://upload.wikimedia.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: same-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
+${staticHeaders}
 /static/*
   Cache-Control: public, max-age=31536000, immutable
 `);

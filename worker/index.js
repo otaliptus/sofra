@@ -1,4 +1,5 @@
 import { shareableRecipe } from '../recipe.js';
+import { securityHeaders } from './security-headers.mjs';
 
 const root='/api/pano', rowLimit=8, bodyLimit=48*1024;
 const json=(value,status=200,headers={})=>Response.json(value,{status,headers:{
@@ -84,6 +85,7 @@ async function feed(url,env,ctx,time){
 }
 async function handle(request,env,ctx){
   const url=new URL(request.url),path=url.pathname,method=request.method;
+  if(!path.startsWith('/api/'))return servePage(request,env);
   const time=calendar(Date.now());
   if(path===root&&method==='GET')return feed(url,env,ctx,time);
   const match=/^\/api\/pano\/([0-9a-f]{32})(?:\/(vote|report))?$/.exec(path);
@@ -147,6 +149,22 @@ async function handle(request,env,ctx){
     if(!vote)return json({ok:true});
   }
   invalidate(url,ctx,time);return json({ok:true});
+}
+async function servePage(request,env){
+  // Each document needs a fresh CSP nonce for Cloudflare's injected bot check.
+  const headers=new Headers(request.headers);
+  for(const name of ['if-none-match','if-modified-since','range'])headers.delete(name);
+  const asset=await env.ASSETS.fetch(new Request(request,{headers}));
+  if(asset.status!==200||!asset.headers.get('Content-Type')?.startsWith('text/html'))return asset;
+  const nonce=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18))));
+  const page=new Response(asset.body,asset);
+  for(const [name,value] of Object.entries(securityHeaders(`'nonce-${nonce}'`)))page.headers.set(name,value);
+  page.headers.set('Cache-Control','private, no-store');
+  page.headers.delete('ETag');
+  if(!asset.body)return page;
+  return new HTMLRewriter().on('script#legacy-redirect',{
+    element(script){script.setAttribute('nonce',nonce);}
+  }).transform(page);
 }
 function invalidate(url,ctx,time){
   ctx.waitUntil(Promise.all(['new','day','week','all'].map(sort=>
