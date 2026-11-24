@@ -106,7 +106,7 @@ Added Aynala for whole sivri biber and pepper rings. Dilimle offers thin, medium
 
 Desktop and touch playthroughs checked the reflected pepper silhouette, all eight thin rings, movement and undo, two olive colors, sliced toppings, 960px photos, album remix and radio bookmarks.
 
-Gazete lays a single open issue of Sofra Postası beneath the plate, with red gingham showing at its edges. The original Turkish satire and generated press photos are typeset in artwork/sofra-postasi.html. To update the print, capture that page at 1840 × 1220 CSS pixels with device scale 1.25 and export the result to assets/gazete-kagidi.webp.
+Gazete lays a single open issue of Ümraniye Postası beneath the plate, with red gingham showing at its edges. The original Turkish satire and generated press photos are typeset in artwork/sofra-postasi.html. To update the print, capture that page at 1840 × 1220 CSS pixels with device scale 1.25 and export the result to assets/gazete-kagidi.webp.
 
 Domates salçası and biber salçası sit beside the other breakfast spreads. Each has its own bowl, knife mark and matching height field. A tap deposits paste and dragging the knife follows the gesture, including across coated toppings. The table surface and both pastes use the existing undo, save, sharing and photo paths.
 
