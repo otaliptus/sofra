@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#1c1510">
   <meta name="description" content="Ekmeğini seç, kahvaltını hazırla ve fotoğrafını çek.">
   <link rel="icon" href="data:,"><title>Sofra — Kahvaltı hazırla</title>
-  <link rel="stylesheet" href="workbench.css?v=movable-cover">
+  <link rel="stylesheet" href="workbench.css?v=radio">
   <script>if(location.hash.startsWith('#sofra='))location.replace('table.html'+location.hash)</script>
 </head>
 <body>
@@ -13,8 +13,17 @@
     <header><nav aria-label="Sofra">
       <div id="nav-left"><button id="fresh">Ekmek seç</button><button id="help">Yardım</button></div>
       <button id="back" hidden>Geri</button>
-      <label id="cover-control" hidden>Üst parça <select id="photo-cover"></select></label>
-      <button id="audio" aria-label="Sesi aç" aria-pressed="false" title="Ses">♪</button>
+      <label id="cover-control" hidden><span>Üst parça</span> <select id="photo-cover"></select></label>
+      <div id="radio" role="group" aria-label="Müzik">
+        <button id="music-play" type="button" aria-label="Müziği çal" title="Müziği çal"><span aria-hidden="true"></span></button>
+        <span id="track-name" aria-live="polite">Muhabbet</span>
+        <button id="audio" type="button" aria-label="Sesi kapat" title="Sesi kapat">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9h4l5-4v14l-5-4H3z"/><path class="waves" d="M15 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/><path class="silence" d="m16 9 5 6m0-6-5 6"/>
+          </svg>
+        </button>
+      </div>
+      <audio id="soundtrack" preload="none"></audio>
       <button id="lid" hidden>Sandviçi kapat</button>
       <button id="album">Albümüm</button>
       <button id="grand-reset" disabled title="Sofrayı baştan hazırla">Sıfırla</button>
@@ -39,6 +48,6 @@
     </footer>
   </main>
   <dialog id="sheet"><div id="sheet-content"></div></dialog>
-  <script type="module" src="simit.js?v=movable-cover"></script>
+  <script type="module" src="simit.js?v=radio"></script>
 </body>
 </html>

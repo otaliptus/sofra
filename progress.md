@@ -53,3 +53,7 @@ Compared all 16 bread and placement combinations with their 960 × 960 exports i
 In Foto, dragging visible crust moves the upper half while the camera stays fixed. The rim handle turns it continuously. The wheel or R and Shift+R allow fine turns, and the arrow keys move the bread while the handle has focus. Dragging the table or through the simit hole still orbits the camera. Serbest remembers the hand-placed top when switching between presets, saving a photo or opening its recipe link.
 
 Tested mouse gestures on simit and poğaça and emulated touch gestures on açma and taş ekmek, including low-angle picking, cancelled drags and rotations, crop-to-PNG comparisons, reload and album remix. Dragged and turned a sample simit in the in-app browser. Physical phone testing remains open.
+
+The top bar streams one Turku recording at a time from Wikimedia Commons. Muhabbet starts at 0:45, followed by Anadolu Kavağı, Bir Demet Yasemen and Üsküdar’a Gider İken. The playlist repeats. Play/stop and mute work in edit and photo modes. Yardım includes recording credits and license links.
+
+Verified the opening cue, all four track transitions, stop and restart, gesture-triggered playback, and the saved mute setting in Chromium. Checked the toolbar on a 320px emulated touch screen with taş ekmek in edit and photo modes.

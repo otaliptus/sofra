@@ -1,3 +1,4 @@
+import { mountMusic, musicCredits } from './music.js?v=radio';
 import { createBoard, cameraNames } from './board-3d.js?v=movable-cover';
 import { mountShelf } from './shelf.js?v=kareli';
 import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=movable-cover';
@@ -16,7 +17,8 @@ const shared=recipeFromHash(location.hash);
 let recipe=shared||draft()||emptyRecipe();
 if(shared){write(storeKey,JSON.stringify(recipe));history.replaceState(null,'',location.pathname+location.search);}
 let board,selected=-1,brush=null,charge=0,gesture=null,mode='edit',angle='tilt',snapshot=null;
-let audioOn=read('sofra.sound')==='on',audioContext,noticeTimer,teaFrame=0,albumDB;
+const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
+let audioContext,noticeTimer,teaFrame=0,albumDB;
 const historyStack=[];
 for(const [id,cloth] of Object.entries(cloths)){
   const button=document.createElement('button');
@@ -90,7 +92,7 @@ pieceAction.onclick=()=>{
   canvas.focus({preventScroll:true});
 };
 function clink(kind){
-  if(!audioOn)return;
+  if(music.muted)return;
   try{
     audioContext||=new AudioContext();void audioContext.resume();
     const ac=audioContext,t=ac.currentTime,gain=ac.createGain();gain.connect(ac.destination);
@@ -104,8 +106,6 @@ function clink(kind){
     osc.frequency.exponentialRampToValueAtTime(kind==='cay'?1000:85,t+.09);gain.gain.setValueAtTime(.085,t);gain.gain.exponentialRampToValueAtTime(.0001,t+.16);osc.connect(gain);osc.start();osc.stop(t+.17);
   }catch{/* The board works with sound muted. */}
 }
-function soundLabel(){const b=$('#audio');b.setAttribute('aria-pressed',String(audioOn));b.setAttribute('aria-label',audioOn?'Sesi kapat':'Sesi aç');}
-$('#audio').onclick=()=>{audioOn=!audioOn;write('sofra.sound',audioOn?'on':'off');soundLabel();clink('cay');};
 function chooseBrush(food){
   const kind=pantry[food]?.kind;
   brush=food;charge=food?1:0;knife.hidden=true;canvas.dataset.cursor=kind||'';
@@ -342,7 +342,7 @@ function dialog(title,html){
 }
 sheet.addEventListener('close',()=>{cancelAnimationFrame(teaFrame);});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
-$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseye dokun. Kaymak, reçel ve menemeni bıçakla sür. Baharatı serp, ketçap ve mayonezi sık. Aleti bırakmak için boş bir yere dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Geri almak için Ctrl/⌘ Z.</p>');
+$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseye dokun. Kaymak, reçel ve menemeni bıçakla sür. Baharatı serp, ketçap ve mayonezi sık. Aleti bırakmak için boş bir yere dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Geri almak için Ctrl/⌘ Z.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){
@@ -484,9 +484,8 @@ document.addEventListener('keydown',e=>{
   if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
 });
 new ResizeObserver(showHandle).observe(stage);
-window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,camera:board?.pose(),coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
+window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,music:music.state(),camera:board?.pose(),coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
 window.advanceTime=ms=>board?.step(ms);
-soundLabel();
 try{
   board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
   hint(recipe.pieces.length||recipe.strokes.length?'':'Bir malzeme seç.',3600);
