@@ -109,3 +109,7 @@ Desktop and touch playthroughs checked the reflected pepper silhouette, all eigh
 Gazete lays a single open issue of Sofra Postası beneath the plate, with red gingham showing at its edges. The original Turkish satire and generated press photos are typeset in artwork/sofra-postasi.html. To update the print, capture that page at 1840 × 1220 CSS pixels with device scale 1.25 and export the result to assets/gazete-kagidi.webp.
 
 Domates salçası and biber salçası sit beside the other breakfast spreads. Each has its own bowl, knife mark and matching height field. A tap deposits paste and dragging the knife follows the gesture, including across coated toppings. The table surface and both pastes use the existing undo, save, sharing and photo paths.
+
+Production bundles the game and gives its script, stylesheet and original artwork content-addressed URLs for browser caching. Meshes are built on first use. The board keeps the unchanged part of a food stack, caches stationary shadows during camera moves and preserves the viewfinder buffers across a 960px exposure. Cold-load and populated-table checks use the same viewport, connection profile and saved recipe for both builds. Reference renders covered edits, undo, drinks, alternative breads and saved photos.
+
+The tea glass and its contents are 25% larger in all three dimensions. The saucer and spoon retain their original scale. Picking and photo framing follow the new rim, and the pouring close-up uses a tighter crop.

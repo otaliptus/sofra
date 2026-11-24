@@ -12,6 +12,7 @@ export function chooseSlice(piece,room,{sheet,dialog,apply}){
   const status=sheet.querySelector('.cut-footer span'),button=sheet.querySelector('.cut-apply');
   const image=id=>document.querySelector('[data-food="'+id+'"] img');
   const face=image(food),whole=image(piece.food);
+  face.loading=whole.loading='eager';
   const edge=document.createElement('canvas');edge.width=220;edge.height=220;
   function draw(){
     if(!canvas.isConnected||!face.naturalWidth||!whole.naturalWidth)return;

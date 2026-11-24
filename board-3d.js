@@ -1,7 +1,8 @@
 import * as THREE from './node_modules/three/build/three.module.js';
+import { assetURL } from './asset-url.js';
 import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
-import { createDrinks } from './drinks.js?v=free-peel';
+import { createDrinkFactory } from './drinks.js?v=perf';
 import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=gazete';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
@@ -19,7 +20,7 @@ function texture(source){
   const map=new THREE.CanvasTexture(source);map.colorSpace=THREE.SRGBColorSpace;map.anisotropy=4;return map;
 }
 async function loadImage(asset){
-  const img=new Image();img.src='./assets/'+asset+'.webp';await img.decode();return img;
+  const img=new Image();img.src=assetURL(asset);await img.decode();return img;
 }
 function outline(image,w=120){
   const h=Math.max(12,Math.round(w*image.height/image.width));
@@ -39,7 +40,10 @@ function sideGeometry(mask,width,height,depth,bread,topY,crown){
   const rings=crown ? [[1,0],[.7,-.001],[.16,-.001],[0,0]]
               : bread ? [[1,0],[.86,-depth*.055],[.64,-depth*.08],[.42,depth*.02],[.2,depth*.18],[.07,depth*.37],[0,depth*.60]]
                     : [[1,0],[.76,-.001],[.23,.001],[0,Math.min(.005,depth*.3)]];
+  const inside=(x,y)=>x>=0&&x<w&&y>=0&&y<h&&mask.pixels[(y*w+x)*4+3]>=128;
   for(let j=-1;j<h;j++)for(let i=-1;i<w;i++){
+    const filled=inside(i,j);
+    if(inside(i+1,j)===filled&&inside(i+1,j+1)===filled&&inside(i,j+1)===filled)continue;
     const corners=[[i,j],[i+1,j],[i+1,j+1],[i,j+1]].map(([x,y])=>[(x+.5)/w,(y+.5)/h]);
     const values=corners.map(([u,v])=>alpha(u,v)),cross=[];
     for(let k=0;k<4;k++){
@@ -132,14 +136,28 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
   }
   // Use the photograph's footprint, including non-square breads, to frame pictures.
   const perimeter=[];
+  const rows=[];
+  for(let j=0;j<mask.h;j+=2){
+    let first=-1,last=-1;
+    for(let i=0;i<mask.w;i+=2)if(mask.pixels[(j*mask.w+i)*4+3]>=128){
+      if(first<0)first=i;
+      last=i;
+    }
+    if(first>=0)rows.push({j,first,last});
+  }
   for(let k=0;k<48;k++){
     const a=k*Math.PI/24,dx=Math.cos(a),dz=Math.sin(a);
     let best=-Infinity,px=0,pz=0;
-    for(let j=0;j<mask.h;j+=2)for(let i=0;i<mask.w;i+=2){
-      const u=(i+.5)/mask.w,v=(j+.5)/mask.h;
-      if(mask.alpha(u,v)<.5)continue;
-      const x=(u-.5)*width,z=(v-.5)*height,dot=x*dx+z*dz;
-      if(dot>best){best=dot;px=x;pz=z;}
+    for(const {j,first,last} of rows){
+      const z=((j+.5)/mask.h-.5)*height;
+      // For a horizontal scanline the extreme lies at one end. On the
+      // vertical axes retain the original tie order at floating-point precision.
+      const end=dx>0?last:first,start=Math.abs(dx)<1e-12?first:end;
+      for(let i=start;i<=end;i+=2){
+        if(i!==first&&i!==last&&mask.pixels[(j*mask.w+i)*4+3]<128)continue;
+        const x=((i+.5)/mask.w-.5)*width,dot=x*dx+z*dz;
+        if(dot>best){best=dot;px=x;pz=z;}
+      }
     }
     perimeter.push([px,pz]);
   }
@@ -150,10 +168,18 @@ function relative(p,x,z){
   return [localX(p,dx*c-dz*s),dx*s+dz*c];
 }
 
+function loadBoardArt(){
+  const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','drink-art','milk-art','cay','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
+    ...ingredients.filter(f=>f.kind==='topping'&&!f.drink).map(f=>f.asset||f.id),
+    ...ingredients.filter(f=>f.paste).map(f=>'smear-'+f.id),'smear-cream','smear-jam','servings','serving-relief']);
+  return Promise.all(Array.from(ids).map(async id=>[id,await loadImage(id)])).then(Object.fromEntries);
+}
 export async function createBoard(canvas){
+  const loading=loadBoardArt();
   const renderer=new THREE.WebGLRenderer({canvas,alpha:false,antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate=false;
   const scene=new THREE.Scene();scene.background=new THREE.Color('#615049');
   scene.fog=new THREE.FogExp2(0x615049,.048);
   const editorCamera=new THREE.OrthographicCamera(-1,1,1,-1,.01,24);
@@ -163,10 +189,7 @@ export async function createBoard(canvas){
   Object.assign(sun.shadow.camera,{left:-1.8,right:1.8,top:1.8,bottom:-1.8,near:.1,far:12});sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.00014;sun.shadow.normalBias=.0005;sun.shadow.radius=2.5;
   scene.add(sun,new THREE.AmbientLight(0xffffff,1.55));
-  const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','drink-art','milk-art','cay','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
-    ...ingredients.filter(f=>f.kind==='topping'&&!f.drink).map(f=>f.asset||f.id),
-    ...ingredients.filter(f=>f.paste).map(f=>'smear-'+f.id),'smear-cream','smear-jam','servings','serving-relief']);
-  const art=Object.fromEntries(await Promise.all(Array.from(ids).map(async id=>[id,await loadImage(id)])));
+  const art=await loading;
   teaImages.cay=art.cay;
 
   const clothMaps=Object.fromEntries(Object.entries(cloths).map(([id,c])=>[id,texture(art[c.asset])]));
@@ -187,19 +210,21 @@ export async function createBoard(canvas){
     }
     bread=loafCache.get(id);breadId=id;bread.group.visible=true;
   }
-  activateBread();
-  const blanks={cay:createTeaService(renderer,art['tea-saucer']),...createDrinks(art['drink-art'],art['milk-art'])};
-  for(const item of ingredients.filter(f=>f.kind==='topping'&&!f.drink&&!f.bread)){
-    blanks[item.id]=makeFood(art[item.asset||item.id],item.size,item.depth,{
-      dome:item.id.endsWith('-olive'),egg:item.id==='fried-egg'||item.id==='egg-slice',
-      flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(item.id)
-    });
-  }
+  const blanks={};
+  const makeDrink=createDrinkFactory(art['drink-art'],art['milk-art']);
   // Shelf halves and the movable lid use the same undeformed bread model.
   function foodModel(id){
     if(blanks[id])return blanks[id];
-    const loaf=pantry[id].bread,b=breads[loaf],ring=loaf==='simit';
-    blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[loaf],cutFace:art[b.asset],ring,flex:ring});
+    const item=pantry[id];
+    if(id==='cay')blanks[id]=createTeaService(renderer,art['tea-saucer']);
+    else if(item.drink)blanks[id]=makeDrink(id);
+    else if(item.bread){
+      const b=breads[item.bread],ring=item.bread==='simit';
+      blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[item.bread],cutFace:art[b.asset],ring,flex:ring});
+    }else blanks[id]=makeFood(art[item.asset||id],item.size,item.depth,{
+      dome:id.endsWith('-olive'),egg:id==='fried-egg'||id==='egg-slice',
+      flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(id)
+    });
     return blanks[id];
   }
   const sliceModels=new Map();
@@ -222,14 +247,17 @@ export async function createBoard(canvas){
     return (ref.forOpening?.(openingPercent(p))??ref.forFill?.(p.dem,p.water)??ref.group).clone();
   }
   let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,ghostModel=null,hover=null,view=null,raf=0,clock=0;
+  const placed=[];
+  let supportBread=null,breadMarks='';
   let orbit={yaw:0,elevation:Math.PI/2},editPose=null,photoLens='tilt';
   let editorAspect=1;
   const falls=[];
   const landing=new Map();
 
-  const renderPhoto=createPhotoFocus(renderer);
-  function render(gate=framePixels*renderer.getPixelRatio()){
-    if(view)renderPhoto(scene,photoCamera,photoSetup,gate);
+  const photoFocus=createPhotoFocus(renderer);
+  function render(gate=framePixels*renderer.getPixelRatio(),shadowsChanged=true){
+    if(shadowsChanged)renderer.shadowMap.needsUpdate=true;
+    if(view)photoFocus.render(scene,photoCamera,photoSetup,gate);
     else renderer.render(scene,editorCamera);
   }
   function subjectPoints(){
@@ -243,7 +271,7 @@ export async function createBoard(canvas){
       const add=(x,y,z)=>points.push(new THREE.Vector3(x,y,z).applyMatrix4(group.matrixWorld));
       for(const [x,z] of ref.perimeter){add(x,0,z);add(x,ref===blanks.cay ? .025 : ref.depth,z);}
       if(ref===blanks.cay){
-        for(let i=0;i<16;i++){const a=i*Math.PI/8;add(.068*Math.cos(a),ref.depth,.068*Math.sin(a));}
+        for(let i=0;i<16;i++){const a=i*Math.PI/8;add(ref.rimRadius*Math.cos(a),ref.depth,ref.rimRadius*Math.sin(a));}
       }else add(0,ref.depth,0);
       if(group.userData.openBounds){
         const [min,max]=group.userData.openBounds;
@@ -264,11 +292,14 @@ export async function createBoard(canvas){
   function cameraPosition(){
     if(view)aimCamera(photoCamera,orbit,photoSetup.target,photoSetup.distance);
     else aimCamera(editorCamera,orbit,origin,4);
-    render();
   }
-  function resize(){
+  let viewportWidth=0,viewportHeight=0;
+  function resize(draw=true){
     const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
-    renderer.setSize(w,h,false);framePixels=Math.min(w*.91,h*.93);
+    if(w!==viewportWidth||h!==viewportHeight){
+      renderer.setSize(w,h,false);viewportWidth=w;viewportHeight=h;
+    }
+    framePixels=Math.min(w*.91,h*.93);
     if(view){
       photoCamera.aspect=w/h;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan*h/framePixels));
       photoCamera.updateProjectionMatrix();
@@ -283,6 +314,7 @@ export async function createBoard(canvas){
       }
     }
     canvas.parentElement.style.setProperty('--frame',framePixels+'px');cameraPosition();
+    if(draw)render();
   }
   function photoPose(id){
     const pose=presetPose(id),drink=recipe.pieces.find(p=>p.food==='cay')||recipe.pieces.find(p=>pantry[p.food].drink);
@@ -320,7 +352,7 @@ export async function createBoard(canvas){
   function rotate(dx,dy){
     orbit={yaw:(orbit.yaw-dx)%(Math.PI*2),elevation:clamp(orbit.elevation+dy,.20,Math.PI/2)};
     if(view)view='free';else editPose={...orbit};
-    cameraPosition();
+    cameraPosition();render(undefined,false);
   }
   function setRay(clientX,clientY){
     const b=canvas.getBoundingClientRect();ray.setFromCamera({x:(clientX-b.left)/b.width*2-1,y:1-(clientY-b.top)/b.height*2},camera);
@@ -368,7 +400,9 @@ export async function createBoard(canvas){
     let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
     for(let i=0;i<count;i++){
       if(i===exclude)continue;
-      const p=recipe.pieces[i],food=modelFor(p),[lx,lz]=relative(p,x,z);
+      const {piece:p,ref:food,c,s,extentX,extentZ}=placed[i],dx=x-p.x,dz=z-p.z;
+      if(Math.abs(dx)>extentX||Math.abs(dz)>extentZ)continue;
+      const lx=localX(p,dx*c-dz*s),lz=dx*s+dz*c;
       const u=lx/food.width+.5,v=lz/food.height+.5;
       if(food.mask.alpha(u,v)<.47)continue;
       const offset=offsets[i]?.(lx,lz)||0;
@@ -552,8 +586,25 @@ export async function createBoard(canvas){
     group.userData.draped=true;
   }
   function sync(r,settle=false){
-    recipe=r;setCloth(r.cloth);activateBread(r.bread);landing.clear();
-    for(const n of nodes){
+    for(const [piece] of landing){
+      const i=placed.findIndex(entry=>entry.piece===piece);
+      if(i>=0)position(nodes[i],piece,heights[i]);
+    }
+    landing.clear();recipe=r;setCloth(r.cloth);activateBread(r.bread);
+    const marks=JSON.stringify(r.strokes);
+    let keep=0;
+    // Support depends only on the bread and the pieces below this one. Keep
+    // that prefix, including its deformed meshes and their GPU buffers.
+    if(supportBread===bread&&breadMarks===marks){
+      while(keep<placed.length&&keep<r.pieces.length){
+        const entry=placed[keep],p=r.pieces[keep];
+        if(entry.piece!==p||(settle&&!entry.stable)||entry.state!==JSON.stringify(p))break;
+        keep++;
+      }
+    }
+    supportBread=bread;breadMarks=marks;
+    for(let i=keep;i<nodes.length;i++){
+      const n=nodes[i];
       scene.remove(n);
       const coating=n.children.at(-1);if(coating?.userData.coating)n.remove(coating);
       if(n.userData.draped)for(const mesh of n.children)mesh.geometry.dispose();
@@ -563,8 +614,8 @@ export async function createBoard(canvas){
       coat.dispose();coatings.delete(p);
     }
     paintLoaf(r.strokes);
-    nodes=[];heights=[];offsets=[];
-    for(let i=0;i<r.pieces.length;i++){
+    nodes.length=heights.length=offsets.length=placed.length=keep;
+    for(let i=keep;i<r.pieces.length;i++){
       const p=r.pieces[i],ref=modelFor(p),{height,stable,offset}=support(p,i,-1,true);
       if(settle&&!stable){r.pieces.splice(i--,1);slip(p);continue;}
       const g=pieceGroup(p);
@@ -572,6 +623,12 @@ export async function createBoard(canvas){
       if(shape)conform(g,shape);
       offsets.push(shape);
       heights.push(height);position(g,p,height);scene.add(g);nodes.push(g);paintPiece(p,i);
+      const c=Math.cos(p.a),s=Math.sin(p.a);
+      // Some drinks have handles beyond their nominal body. Their own mask
+      // handles these samples. Image-backed food has a strict UV rectangle.
+      const extentX=pantry[p.food].drink?Infinity:(Math.abs(c)*ref.width+Math.abs(s)*ref.height)/2;
+      const extentZ=pantry[p.food].drink?Infinity:(Math.abs(s)*ref.width+Math.abs(c)*ref.height)/2;
+      placed.push({piece:p,ref,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
     }
     placeCover();
     render();
@@ -617,6 +674,7 @@ export async function createBoard(canvas){
     raf=requestAnimationFrame(animate);
   }
   function lift(p,hide=-1,swing=0){
+    if(!p&&!ghost&&hover===null)return;
     if(hover!==null && nodes[hover])nodes[hover].visible=true;
     hover=hide<0?null:hide;if(hover!==null)nodes[hover].visible=false;
     const opening=p?openingPercent(p):0;
@@ -642,16 +700,21 @@ export async function createBoard(canvas){
     const out=canvas2d(960,960),size=renderer.getSize(new THREE.Vector2()),ratio=renderer.getPixelRatio();
     const fov=photoCamera.fov,aspect=photoCamera.aspect;
     try{
-      renderer.setPixelRatio(1);renderer.setSize(960,960,false);
+      renderer.setDrawingBufferSize(960,960,1);
       photoCamera.aspect=1;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan));
-      photoCamera.updateProjectionMatrix();render(960);out.getContext('2d').drawImage(canvas,0,0);
+      photoCamera.updateProjectionMatrix();photoFocus.exportFrame(scene,photoCamera,photoSetup,960);
+      out.getContext('2d').drawImage(canvas,0,0);
     }finally{
-      renderer.setPixelRatio(ratio);renderer.setSize(size.x,size.y,false);
-      photoCamera.fov=fov;photoCamera.aspect=aspect;photoCamera.updateProjectionMatrix();render();
+      renderer.setDrawingBufferSize(size.x,size.y,ratio);
+      photoCamera.fov=fov;photoCamera.aspect=aspect;photoCamera.updateProjectionMatrix();
+      photoFocus.present(photoCamera,photoSetup,framePixels*ratio);
     }
     return out;
   }
-  paintBread([]);new ResizeObserver(resize).observe(canvas);resize();
+  resize(false);
+  new ResizeObserver(()=>{
+    if(canvas.clientWidth!==viewportWidth||canvas.clientHeight!==viewportHeight)resize();
+  }).observe(canvas);
   return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
     coverPose,coverHandle,pickCover,covers,coverPlanePoint,dragCover,
     placeCut(piece,index){

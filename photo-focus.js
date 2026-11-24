@@ -3,11 +3,15 @@ import * as THREE from './node_modules/three/build/three.module.js';
 // A thin-lens circle of confusion softens distant wood in an oblique photo.
 // Reject closer samples behind an edge to preserve the silhouette of the food.
 export function createPhotoFocus(renderer){
-  const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true});
-  target.depthTexture=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
+  function makeTarget(){
+    const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,depthBuffer:true});
+    target.depthTexture=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
+    return target;
+  }
+  const preview=makeTarget();
   const size=new THREE.Vector2();
   const uniforms={
-    colorMap:{value:target.texture},depthMap:{value:target.depthTexture},
+    colorMap:{value:preview.texture},depthMap:{value:preview.depthTexture},
     texel:{value:new THREE.Vector2()},focus:{value:1},gate:{value:1},near:{value:.02},far:{value:30},aperture:{value:0}
   };
   const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({
@@ -42,13 +46,24 @@ export function createPhotoFocus(renderer){
       }`
   }));
   const screen=new THREE.Scene(),lens=new THREE.Camera();screen.add(quad);
-  return (scene,camera,setup,gate)=>{
-    renderer.getDrawingBufferSize(size);target.setSize(size.x,size.y);
-    uniforms.texel.value.set(1/size.x,1/size.y);
+  function present(camera,setup,gate,target=preview){
+    uniforms.colorMap.value=target.texture;uniforms.depthMap.value=target.depthTexture;
+    uniforms.texel.value.set(1/target.width,1/target.height);
     uniforms.focus.value=setup.distance;uniforms.gate.value=gate;
     uniforms.aperture.value=.015*Math.abs(camera.up.y);
     uniforms.near.value=camera.near;uniforms.far.value=camera.far;
-    renderer.setRenderTarget(target);renderer.render(scene,camera);
     renderer.setRenderTarget(null);renderer.render(screen,lens);
-  };
+  }
+  function render(scene,camera,setup,gate,target=preview){
+    renderer.getDrawingBufferSize(size);target.setSize(size.x,size.y);
+    renderer.setRenderTarget(target);renderer.render(scene,camera);
+    present(camera,setup,gate,target);
+  }
+  return {render,present,exportFrame(scene,camera,setup,gate){
+    // Preserve the full-size preview colour and depth while exposing the square
+    // film gate. Restoring the viewfinder then takes a single fullscreen draw.
+    const film=makeTarget();
+    try{render(scene,camera,setup,gate,film);}
+    finally{film.dispose();}
+  }};
 }

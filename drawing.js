@@ -158,14 +158,15 @@ export function drawTable(c,w,h,table,lifted=-1) {
   table.dishes.forEach((d,i)=>{if(i!==lifted)draw(d,false);});
   if(lifted>=0 && table.dishes[lifted])draw(table.dishes[lifted],true);
 }
-export function drawPour(c,d,kind,progress) {
+export function drawPour(c,d,kind,progress,zoom=1) {
   const w=c.canvas.width,h=c.canvas.height;c.clearRect(0,0,w,h);
-  drawDish(c,{...d,angle:0},w*.42,h*.59,h*.91);
+  const size=h*.91*zoom,centerY=h*.59-(size-h*.91)/2;
+  drawDish(c,{...d,angle:0},w*.42,centerY,size);
   if(!kind)return;
   const phase=Math.sin(Math.PI*progress),spoutX=w*.46,spoutY=h*.16;
   c.save();c.translate(spoutX,spoutY);c.rotate(-phase*.32);
   const pot=images[kind==='dem'?'demlik':'kettle'];
   if(pot)c.drawImage(pot,-3,-h*.15,w*.54,h*.48);
   c.restore();
-  if(phase>.2){c.strokeStyle=kind==='dem'?'#b4430cde':'#a2c6cbad';c.lineWidth=phase*4;c.beginPath();c.moveTo(spoutX+4,spoutY+4);c.quadraticCurveTo(spoutX-6,h*.27,w*.42,h*.35);c.stroke();}
+  if(phase>.2){const lipY=centerY-size*(.24/.91);c.strokeStyle=kind==='dem'?'#b4430cde':'#a2c6cbad';c.lineWidth=phase*4;c.beginPath();c.moveTo(spoutX+4,spoutY+4);c.quadraticCurveTo(spoutX-6,(spoutY+lipY)/2+h*.015,w*.42,lipY);c.stroke();}
 }

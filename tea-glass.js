@@ -2,7 +2,10 @@ import * as THREE from './node_modules/three/build/three.module.js';
 import { teaColors } from './tea-colors.js?v=servings';
 
 const cupBase=.011;
+const glassScale=1.25;
 const profile=[[.034,0],[.041,.003],[.047,.008],[.052,.020],[.060,.043],[.063,.061],[.061,.077],[.056,.094],[.050,.111],[.048,.126],[.051,.145],[.058,.167],[.066,.191],[.068,.202]];
+const [lipRadius,glassHeight]=profile.at(-1);
+const rimRadius=lipRadius*glassScale,depth=cupBase+glassHeight*glassScale;
 const lathe=points=>new THREE.LatheGeometry(points.map(([r,y])=>new THREE.Vector2(r,y)),72);
 
 function reflections(renderer){
@@ -30,17 +33,19 @@ export function createTeaService(renderer,art){
   const geo=lathe(saucerProfile),positions=geo.attributes.position,uv=geo.attributes.uv;
   for(let i=0;i<positions.count;i++)uv.setXY(i,.5+positions.getX(i)/.327,.5-positions.getZ(i)/.327);
   const dish=mesh(geo,porcelain,'saucer');dish.castShadow=true;form.add(dish);
+  const vessel=new THREE.Group();vessel.name='tea glass assembly';
+  vessel.position.y=cupBase;vessel.scale.setScalar(glassScale);form.add(vessel);
   const glass=new THREE.MeshPhysicalMaterial({color:0xfffefa,roughness:.035,transmission:1,thickness:.005,ior:1.49,envMap,envMapIntensity:.85});
   // The filled volume already refracts the scene. Add only the outer glass
   // reflections over it so two screen-space refractions cannot hide each other.
   const filledWalls=new THREE.MeshPhysicalMaterial({color:0x000000,roughness:.045,ior:1.49,
     envMap,envMapIntensity:.85,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false});
   const walls=[[0,0],...profile,...profile.slice().reverse().map(([r,y])=>[r-.002,Math.max(.010,y)]),[0,.011]];
-  const cup=mesh(lathe(walls),glass,'glass');cup.position.y=cupBase;form.add(cup);
+  const cup=mesh(lathe(walls),glass,'glass');vessel.add(cup);
   const rim=new THREE.Mesh(new THREE.TorusGeometry(.0674,.0015,10,72),new THREE.MeshStandardMaterial({
     color:0xc0bab1,roughness:.1,metalness:.70,envMap,transparent:true,opacity:.62,depthWrite:false}));
-  rim.name='glass lip';rim.rotation.x=Math.PI/2;rim.position.y=cupBase+.202;rim.renderOrder=3;form.add(rim);
-  const foot=rim.clone();foot.name='glass foot';foot.scale.set(.62,.62,1.4);foot.position.y=cupBase+.004;form.add(foot);
+  rim.name='glass lip';rim.rotation.x=Math.PI/2;rim.position.y=glassHeight;rim.renderOrder=3;vessel.add(rim);
+  const foot=rim.clone();foot.name='glass foot';foot.scale.set(.62,.62,1.4);foot.position.y=.004;vessel.add(foot);
   const silver=new THREE.MeshStandardMaterial({color:0xd4ccc0,metalness:.95,roughness:.21,envMap,envMapIntensity:.65,side:THREE.DoubleSide});
   const spoon=new THREE.Group();spoon.rotation.y=-.48;spoon.position.set(.094,.016,.004);
   const bowl=mesh(lathe([[0,.001],[.014,.003],[.022,.007],[.022,.008],[.014,.004],[0,.002]]),silver,'spoon bowl');
@@ -61,7 +66,7 @@ export function createTeaService(renderer,art){
     if(dem){
       const palette=teaColors(fraction);
       liquid.attenuationColor.set(palette.amber);
-      liquid.attenuationDistance=.083;
+      liquid.attenuationDistance=.083*glassScale;
       liquid.onBeforeCompile=shader=>{
         shader.uniforms.teaScatter={value:new THREE.Color(palette.deep)};
         shader.uniforms.fillLevel={value:level};
@@ -87,13 +92,13 @@ export function createTeaService(renderer,art){
       // Each fill has its own optical uniforms even when its shader program is shared.
       liquid.customProgramCacheKey=()=>'brewed-tea';
     }
-    const m=mesh(lathe(fill),liquid,'tea');m.position.y=cupBase;
+    const m=mesh(lathe(fill),liquid,'tea');
     const group=form.clone(),sides=group.getObjectByName('glass');
     sides.material=filledWalls;sides.renderOrder=2;
-    group.add(m);liquidCache.set(key,group);return group;
+    group.getObjectByName(vessel.name).add(m);liquidCache.set(key,group);return group;
   }
-  return {group:form,forFill,width:.32,height:.32,depth:cupBase+.202,
-    topY(u,v){const r=Math.hypot(u-.5,v-.5)*.32;return r<.068?cupBase+.202:.024;},
+  return {group:form,forFill,width:.32,height:.32,depth,rimRadius,
+    topY(u,v){const r=Math.hypot(u-.5,v-.5)*.32;return r<rimRadius?depth:.024;},
     mask:{alpha(u,v){return Math.hypot(u-.5,v-.5)<.50?1:0;}},
     perimeter:Array.from({length:40},(_,i)=>[.16*Math.cos(i*Math.PI/20),.16*Math.sin(i*Math.PI/20)]),
     contacts:[[0,0],[-.06,0],[.06,0],[0,.06],[0,-.06]]};

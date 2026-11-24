@@ -1,4 +1,5 @@
 import { foods } from './model.js';
+import { assetURL } from './asset-url.js';
 
 export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
   const strip=document.querySelector('#foods');
@@ -14,7 +15,8 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     button.setAttribute('aria-label',food.kind ? food.name+({spread:food.id==='menemen'?' kaşıkla':' sür',spice:' serp',sauce:' sık',topping:' ekle'}[food.kind]) : 'Add '+food.name+' · '+food.en);
     if(food.kind&&food.kind!=='topping')button.setAttribute('aria-pressed','false');
     const image=new Image();
-    image.src='./assets/'+(food.kind==='sauce'?'bottle-'+food.id:food.asset||food.id)+'.webp';
+    if(food.kind&&i>=8)image.loading='lazy';
+    image.src=assetURL(food.kind==='sauce'?'bottle-'+food.id:food.asset||food.id);
     image.alt='';
     image.draggable=false;
     const name=document.createElement('span');

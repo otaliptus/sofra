@@ -263,10 +263,20 @@ function printTiles(atlas,rows){
     const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;return texture;
   });
 }
+export function createDrinkFactory(atlas,milkArt){
+  let tiles,milkTiles;
+  return id=>{
+    if(milks[id])return carton({...milks[id],milk:true},milkTiles??=printTiles(milkArt,1));
+    tiles??=printTiles(atlas,3);
+    if(id==='ayran')return ayran(tiles);
+    if(juices[id])return carton(juices[id],tiles);
+    return coffee(id==='turk-kahvesi',tiles);
+  };
+}
+
+// Artwork exporters also use the complete catalogue outside the game loop.
 export function createDrinks(atlas,milkArt){
-  const tiles=printTiles(atlas,3),milkTiles=printTiles(milkArt,1);
-  const models={'ayran':ayran(tiles),'kahve':coffee(false,tiles),'turk-kahvesi':coffee(true,tiles)};
-  for(const [id,style] of Object.entries(juices))models[id]=carton(style,tiles);
-  for(const [id,style] of Object.entries(milks))models[id]=carton({...style,milk:true},milkTiles);
-  return models;
+  const make=createDrinkFactory(atlas,milkArt);
+  const ids=['ayran','kahve','turk-kahvesi',...Object.keys(juices),...Object.keys(milks)];
+  return Object.fromEntries(ids.map(id=>[id,make(id)]));
 }

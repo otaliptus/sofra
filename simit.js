@@ -1,3 +1,4 @@
+import { assetURL } from './asset-url.js';
 import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
 import { editHistory } from './undo-history.js';
 import { chooseSlice } from './slicing.js';
@@ -32,10 +33,11 @@ if(shared){write(storeKey,JSON.stringify(recipe));history.replaceState(null,'',l
 const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
 let audioContext,noticeTimer,teaFrame=0,drinkService=null,albumDB;
 let wheelTurn=null;
+const clothImage=id=>'url("'+new URL(assetURL(cloths[id].asset),document.baseURI).href+'")';
 for(const [id,cloth] of Object.entries(cloths)){
   const button=document.createElement('button');
   button.type='button';button.textContent=cloth.name;button.dataset.cloth=id;
-  button.style.setProperty('--swatch','url("./assets/'+cloth.asset+'.webp")');
+  button.style.setProperty('--swatch',clothImage(id));
   button.onclick=()=>{
     if(!board||gesture||id===recipe.cloth)return;
     checkpoint();recipe.cloth=id;board.changeCloth(id);showCloth();showHandle();save();
@@ -43,7 +45,7 @@ for(const [id,cloth] of Object.entries(cloths)){
   $('#cloths').append(button);
 }
 function showCloth(){
-  stage.style.setProperty('--cloth-image','url("./assets/'+cloths[recipe.cloth].asset+'.webp")');
+  stage.style.setProperty('--cloth-image',clothImage(recipe.cloth));
   for(const button of $('#cloths').children){
     button.disabled=!board;
     button.setAttribute('aria-pressed',String(button.dataset.cloth===recipe.cloth));
@@ -216,8 +218,8 @@ function chooseBrush(food){
     const tool=kind==='spread'?(useKnife?'Bıçağı':'Kaşığı'):kind==='sauce'?'Şişeyi':'Baharatı';
     done.querySelector('span').textContent=tool+' bırak';
     const asset=kind==='spread'?(useKnife?'knife':'serving-spoon'):kind==='sauce'?'bottle-'+food:food;
-    blade.src='./assets/'+asset+'.webp';
-    load.hidden=kind!=='spread';if(kind==='spread')load.src='./assets/smear-'+food+'.webp';
+    blade.src=assetURL(asset);
+    load.hidden=kind!=='spread';if(kind==='spread')load.src=assetURL('smear-'+food);
     selected=-1;showHandle();
     hint(kind==='sauce'?'Basılı tutarak sık, sürükleyerek gezdir.':kind==='spice'?'Dokunarak serp.':
       food==='menemen'?'Dokunarak bir kaşık koy, sürükleyerek paylaştır.':'Dokunarak koy, sürükleyerek yay.');
@@ -533,7 +535,7 @@ $('#grand-reset').onclick=()=>{
 };
 $('#fresh').onclick=()=>{
   if(gesture)return;
-  const options=Object.entries(breads).map(([id,b])=>'<button data-bread="'+id+'" '+(id==='simit'?'id="plain"':'')+'><img alt="" src="./assets/'+b.asset+'.webp"><span>'+b.name+'</span></button>').join('');
+  const options=Object.entries(breads).map(([id,b])=>'<button data-bread="'+id+'" '+(id==='simit'?'id="plain"':'')+'><img alt="" src="'+assetURL(b.asset)+'"><span>'+b.name+'</span></button>').join('');
   const restore=recipe.coverRemoved?'<button id="restore-cover">Üst parçayı geri koy</button>':'';
   dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons">'+restore+'<button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
   if(restore)$('#restore-cover').onclick=()=>{
@@ -559,7 +561,7 @@ function openDrink(){
 }
 function openTea(){
   const p=recipe.pieces[selected];if(!p||p.food!=='cay')return;
-  dialog('Çay doldur','<canvas id="glass" width="480" height="285" aria-label="Çay bardağı"></canvas><div class="tea-tools"><button id="dem"><img src="./assets/demlik.webp" alt="">Dem</button><button id="water"><img src="./assets/kettle.webp" alt="">Sıcak su</button></div><p class="readout"></p><div class="buttons"><button id="drain">Boşalt</button><button id="remove-glass">Bardağı kaldır</button><button class="primary" id="serve">Servis et</button></div>');
+  dialog('Çay doldur','<canvas id="glass" width="480" height="285" aria-label="Çay bardağı"></canvas><div class="tea-tools"><button id="dem"><img src="'+assetURL('demlik')+'" alt="">Dem</button><button id="water"><img src="'+assetURL('kettle')+'" alt="">Sıcak su</button></div><p class="readout"></p><div class="buttons"><button id="drain">Boşalt</button><button id="remove-glass">Bardağı kaldır</button><button class="primary" id="serve">Servis et</button></div>');
   const glass=$('#glass'),ctx=glass.getContext('2d');
   for(const [button,id] of [['dem','demlik'],['water','kettle']]){
     const img=$('#'+button+' img');
@@ -570,7 +572,7 @@ function openTea(){
     const total=p.dem+p.water;$('#dem').disabled=$('#water').disabled=total>=10;
     $('#drain').disabled=!total;$('.readout').textContent=teaName(p)+' · '+total*10+'%';
     cancelAnimationFrame(teaFrame);const start=performance.now();
-    function frame(now){const t=clamp((now-start)/550,0,1);drawPour(ctx,{...p,type:'cay',angle:0},t<1?kind:null,t);if(kind&&t<1)teaFrame=requestAnimationFrame(frame);}
+    function frame(now){const t=clamp((now-start)/550,0,1);drawPour(ctx,{...p,type:'cay',angle:0},t<1?kind:null,t,1.15);if(kind&&t<1)teaFrame=requestAnimationFrame(frame);}
     frame(start);
   }
   for(const k of ['dem','water'])$('#'+k).onclick=()=>{if(p.dem+p.water>=10)return;checkpoint();p[k]++;update();show(k);clink('cay');};

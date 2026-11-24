@@ -236,6 +236,12 @@ export function createCoating(ref,art){
   const nx=Math.max(12,Math.ceil(ref.width*150)),nz=Math.max(12,Math.ceil(ref.height*150));
   const geometry=new THREE.PlaneGeometry(ref.width,ref.height,nx,nz);geometry.rotateX(-Math.PI/2);
   const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=mesh.receiveShadow=true;
+  const vertices=geometry.attributes.position;
+  const baseY=new Float64Array(vertices.count),texels=new Int32Array(vertices.count);
+  for(let i=0;i<vertices.count;i++){
+    texels[i]=texel(vertices.getX(i)/ref.width+.5,vertices.getZ(i)/ref.height+.5);
+  }
+  let fitted=false;
   let pixels=null,frozen=[],lastMark=null,lastCount=-1,lastLength=-1,lastPortion,lastShape;
   function draw(ctx,layer,mark){
     if(!mark)return;
@@ -253,24 +259,31 @@ export function createCoating(ref,art){
   function deposit(ctx,layer,mark){
     if(!mark)return;
     if(!layer.relief){draw(ctx,layer,mark);return;}
+    if(pantry[mark.food].kind==='spice')return;
     const single=layer.stroke;
     single.clearRect(0,0,layer.width,layer.height);draw(single,layer,mark);
     // Keep a piped ribbon above the folds or fruit already underneath it.
     ctx.globalCompositeOperation='lighter';ctx.drawImage(single.canvas,0,0);
     ctx.globalCompositeOperation='source-over';
   }
-  function rise(u,v){
-    if(!pixels||u<0||u>1||v<0||v>1)return 0;
+  function texel(u,v){
+    if(u<0||u>1||v<0||v>1)return -1;
     const {width,height}=layers[1],x=Math.min(width-1,Math.floor(u*width)),y=Math.min(height-1,Math.floor(v*height));
-    const i=4*(y*width+x);return maxRise*pixels[i]*pixels[i+3]/65025;
+    return 4*(y*width+x);
+  }
+  function riseAt(i){return pixels&&i>=0?maxRise*pixels[i]*pixels[i+3]/65025:0;}
+  function rise(u,v){
+    return pixels?riseAt(texel(u,v)):0;
   }
   function update(marks,shape){
     const last=marks.at(-1),length=last?.line.length??0,portion=last?.portion;
     const dirty=lastCount!==marks.length||lastMark!==last||lastLength!==length||lastPortion!==portion;
+    const sameSpice=last&&last===lastMark&&lastCount===marks.length&&pantry[last.food].kind==='spice';
     mesh.visible=!!last;
     if(dirty){
       const count=Math.max(0,marks.length-1),reuse=frozen.length<=count&&frozen.every((m,i)=>m===marks[i]);
       for(const layer of layers){
+        if(layer.relief&&sameSpice)continue;
         const {dry,wet,width,height}=layer;
         if(!reuse)dry.clearRect(0,0,width,height);
         for(let i=reuse?frozen.length:0;i<count;i++)deposit(dry,layer,marks[i]);
@@ -280,19 +293,30 @@ export function createCoating(ref,art){
         wet.globalCompositeOperation='destination-in';wet.drawImage(ref.image,0,0,width,height);
         wet.globalCompositeOperation='source-over';
       }
-      const {wet,width,height}=layers[1];pixels=last?wet.getImageData(0,0,width,height).data:null;
-      color.needsUpdate=heightMap.needsUpdate=true;
+      if(!sameSpice){
+        const {wet,width,height}=layers[1];pixels=last?wet.getImageData(0,0,width,height).data:null;
+        heightMap.needsUpdate=true;
+      }
+      color.needsUpdate=true;
       frozen=marks.slice(0,count);lastMark=last;lastLength=length;lastCount=marks.length;lastPortion=portion;
     }
-    if(last&&(dirty||shape!==lastShape)){
-      const pos=geometry.attributes.position;
-      for(let i=0;i<pos.count;i++){
-        const x=pos.getX(i),z=pos.getZ(i),u=x/ref.width+.5,v=z/ref.height+.5;
-        pos.setY(i,ref.topY(u,v)+(shape?.(x,z)||0)+.00075+rise(u,v));
+    if(last&&((dirty&&!sameSpice)||shape!==lastShape||!fitted)){
+      const fit=!fitted||shape!==lastShape;
+      let changed=fit;
+      for(let i=0;i<vertices.count;i++){
+        if(fit){
+          const x=vertices.getX(i),z=vertices.getZ(i);
+          baseY[i]=ref.topY(x/ref.width+.5,z/ref.height+.5)+(shape?.(x,z)||0)+.00075;
+        }
+        const y=Math.fround(baseY[i]+riseAt(texels[i]));
+        if(y!==vertices.getY(i)){vertices.setY(i,y);changed=true;}
       }
-      pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
+      if(changed){
+        vertices.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
+      }
+      fitted=true;
     }
-    lastShape=shape;
+    if(last)lastShape=shape;
   }
   return {mesh,update,rise,dispose(){color.dispose();heightMap.dispose();geometry.dispose();material.dispose();}};
 }
