@@ -5,7 +5,7 @@ import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=plate-camera';
+import { breads, cloths, ingredients, pantry, clamp, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=shelf-halves';
 import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=plate-camera';
 
@@ -120,7 +120,7 @@ function makeFood(image,width,depth,{crust=null,dome=false,egg=false,flex=false,
     const bottom=shell?shell.bottom:new THREE.PlaneGeometry(width,height);
     const underside=new THREE.Mesh(bottom,new THREE.MeshLambertMaterial({
       map:cutFace?texture(cutFace):map,alphaTest:shell?0:.48,side:shell?THREE.FrontSide:THREE.BackSide}));
-    if(!shell)underside.rotation.x=-Math.PI/2;
+    if(!shell)bottom.rotateX(-Math.PI/2);
     underside.receiveShadow=true;group.add(underside);
   }
   const contacts=[];
@@ -187,11 +187,18 @@ export async function createBoard(canvas){
   }
   activateBread();
   const blanks={cay:createTeaService(renderer,art['tea-saucer'])};
-  for(const item of ingredients.filter(f=>f.kind==='topping'&&f.id!=='cay')){
+  for(const item of ingredients.filter(f=>f.kind==='topping'&&f.id!=='cay'&&!f.bread)){
     blanks[item.id]=makeFood(art[item.asset||item.id],item.size,item.depth,{
       dome:item.id.endsWith('-olive'),egg:item.id==='fried-egg'||item.id==='egg-slice',
       flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(item.id)
     });
+  }
+  // Shelf halves and the movable lid use the same undeformed bread model.
+  function foodModel(id){
+    if(blanks[id])return blanks[id];
+    const loaf=pantry[id].bread,b=breads[loaf],ring=loaf==='simit';
+    blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[loaf],cutFace:art[b.asset],ring,flex:ring});
+    return blanks[id];
   }
   let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,hover=null,view=null,raf=0,clock=0;
   let orbit={yaw:0,elevation:Math.PI/2},editPose=null,photoLens='tilt';
@@ -218,7 +225,10 @@ export async function createBoard(canvas){
         for(let i=0;i<16;i++){const a=i*Math.PI/8;add(.068*Math.cos(a),ref.depth,.068*Math.sin(a));}
       }else add(0,ref.depth,0);
     }
-    sample(bread,bread.group);recipe.pieces.forEach((p,i)=>sample(blanks[p.food],nodes[i]));
+    sample(bread,bread.group);
+    recipe.pieces.forEach((p,i)=>{
+      if(!pantry[p.food].bread||recipe.photoCover||Math.hypot(p.x,p.z)<=plateRadius)sample(foodModel(p.food),nodes[i]);
+    });
     // A spare on the cloth is scenery in the normal plate portrait. An
     // explicit cover composition can include the whole spare in the shot.
     if(lid?.group.visible&&(recipe.photoCover||Math.hypot(lid.group.position.x,lid.group.position.z)<=plateRadius)){
@@ -312,7 +322,7 @@ export async function createBoard(canvas){
     const hits=ray.intersectObjects(faces,false);
     for(const h of hits){
       const index=indices.get(h.object);
-      const ref=index<0?bread:blanks[recipe.pieces[index].food],u=h.uv.x,v=1-h.uv.y;
+      const ref=index<0?bread:foodModel(recipe.pieces[index].food),u=h.uv.x,v=1-h.uv.y;
       const coat=index<0?bread.coating:coatings.get(recipe.pieces[index]);
       if(coat?.mesh===h.object&&coat.rise(u,v)<.0005)continue;
       if(ref!==blanks.cay&&ref.mask.alpha(u,v)<.49)continue;
@@ -328,7 +338,7 @@ export async function createBoard(canvas){
     let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
     for(let i=0;i<count;i++){
       if(i===exclude)continue;
-      const p=recipe.pieces[i],food=blanks[p.food],[lx,lz]=relative(p,x,z);
+      const p=recipe.pieces[i],food=foodModel(p.food),[lx,lz]=relative(p,x,z);
       const u=lx/food.width+.5,v=lz/food.height+.5;
       if(food.mask.alpha(u,v)<.47)continue;
       const offset=offsets[i]?.(lx,lz)||0;
@@ -337,10 +347,10 @@ export async function createBoard(canvas){
     return high;
   }
   function support(p,count=recipe.pieces.length,exclude=-1,fit=false){
-    const ref=blanks[p.food],cs=Math.cos(p.a),sn=Math.sin(p.a);
+    const ref=foodModel(p.food),cs=Math.cos(p.a),sn=Math.sin(p.a);
     const samples=ref.contacts.map(([a,b])=>heightAt(p.x+a*cs+b*sn,p.z-a*sn+b*cs,count,exclude));
     const good=samples.filter(v=>v>=0),max=Math.max(...samples);
-    const stable=p.food==='cay'||good.length>=Math.max(1,samples.length*.28);
+    const stable=!!pantry[p.food].bread||p.food==='cay'||good.length>=Math.max(1,samples.length*.28);
     if(!fit||ref.flex||p.food==='cay'||max-Math.min(...samples)<.003)return {stable,height:max+.001};
     const plane=restingPlane(ref.contacts,samples,.42);
     return {stable,height:plane.height+.001,offset:(x,z)=>plane.sx*x+plane.sz*z};
@@ -367,7 +377,9 @@ export async function createBoard(canvas){
     const mode=view?photoCoverFor(recipe):tableCoverFor(recipe);
     if(mode==='open')return;
     if(!crownCache.has(breadId)){
-      const b=breads[breadId],upper=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[breadId],cutFace:art[b.asset],ring:breadId==='simit'});
+      const ref=foodModel(breads[breadId].crown),group=ref.group.clone();
+      if(breadId==='simit')for(const mesh of group.children)mesh.geometry=mesh.geometry.clone();
+      const upper={...ref,group};
       upper.radius=.02+Math.max(...upper.perimeter.map(([x,z])=>Math.hypot(x,z)));
       crownCache.set(breadId,upper);scene.add(upper.group);
     }
@@ -384,7 +396,7 @@ export async function createBoard(canvas){
       // crown on the highest olive. Reuse the topping contact solver at a
       // shallower slope, with original vertices so dragging cannot accumulate bends.
       const onCloth=Math.hypot(x,z)>plateRadius+lid.radius&&recipe.pieces.every(p=>{
-        const ref=blanks[p.food];
+        const ref=foodModel(p.food);
         return Math.hypot(x-p.x,z-p.z)>lid.radius+Math.hypot(ref.width,ref.height)/2;
       });
       // A ring lying flat on the cloth keeps the original mesh, including
@@ -461,14 +473,15 @@ export async function createBoard(canvas){
     }
     render();
   }
-  function drape(p,index,base,ref=blanks[p.food],stiff=p.food==='kasar'?.50:p.food.includes('onion')?.70:.9){
+  function drape(p,index,base,ref=foodModel(p.food),stiff=p.food===breads.simit.crown ? .32 : p.food==='kasar' ? .50 : p.food.includes('onion') ? .70 : .9){
     const c=Math.cos(p.a),s=Math.sin(p.a);
+    const ring=!p.food||p.food===breads.simit.crown;
     const steps=28,stride=steps+1,grid=new Float32Array(stride*stride);
     // A nearby high spot lifts a region of the slice through its own stiffness.
     // Propagate those contact heights, then relax the surface between contacts.
     for(let row=0;row<=steps;row++)for(let col=0;col<=steps;col++){
       const x=(col/steps-.5)*ref.width,z=(row/steps-.5)*ref.height;
-      grid[row*stride+col]=!p.food&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+x*c+z*s,p.z-x*s+z*c,index,-1);
+      grid[row*stride+col]=ring&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+x*c+z*s,p.z-x*s+z*c,index,-1);
     }
     const dx=ref.width/steps*stiff,dz=ref.height/steps*stiff,diagonal=Math.hypot(dx,dz);
     function sweep(start,end,dir){
@@ -512,7 +525,7 @@ export async function createBoard(canvas){
     recipe=r;setCloth(r.cloth);activateBread(r.bread);landing.clear();
     for(const n of nodes){
       scene.remove(n);
-      if(n.children[2]?.userData.coating)n.remove(n.children[2]);
+      const coating=n.children.at(-1);if(coating?.userData.coating)n.remove(coating);
       if(n.userData.draped)for(const mesh of n.children)mesh.geometry.dispose();
     }
     const present=new Set(r.pieces);
@@ -522,7 +535,7 @@ export async function createBoard(canvas){
     paintLoaf(r.strokes);
     nodes=[];heights=[];offsets=[];
     for(let i=0;i<r.pieces.length;i++){
-      const p=r.pieces[i],ref=blanks[p.food],{height,stable,offset}=support(p,i,-1,true);
+      const p=r.pieces[i],ref=foodModel(p.food),{height,stable,offset}=support(p,i,-1,true);
       if(settle&&!stable){r.pieces.splice(i--,1);slip(p);continue;}
       const g=(ref.forFill?ref.forFill(p.dem,p.water):ref.group).clone();
       const shape=ref.flex?drape(p,i,height):offset;
@@ -544,7 +557,7 @@ export async function createBoard(canvas){
     let coat=coatings.get(p);
     if(!coat){
       if(!p.marks?.length)return;
-      coat=createCoating(blanks[p.food],art);coat.mesh.userData.coating=true;coatings.set(p,coat);
+      coat=createCoating(foodModel(p.food),art);coat.mesh.userData.coating=true;coatings.set(p,coat);
     }
     coat.update(p.marks||[],offsets[i]);
     if(coat.mesh.parent!==nodes[i])nodes[i].add(coat.mesh);
@@ -578,7 +591,7 @@ export async function createBoard(canvas){
     hover=hide<0?null:hide;if(hover!==null)nodes[hover].visible=false;
     if(ghost?.userData.food!==p?.food){if(ghost)scene.remove(ghost);ghost=null;}
     if(p){
-      if(!ghost){const ref=blanks[p.food];ghost=(ref.forFill?ref.forFill(p.dem,p.water):ref.group).clone();ghost.userData.food=p.food;scene.add(ghost);}
+      if(!ghost){const ref=foodModel(p.food);ghost=(ref.forFill?ref.forFill(p.dem,p.water):ref.group).clone();ghost.userData.food=p.food;scene.add(ghost);}
       const coat=hide>=0&&coatings.get(recipe.pieces[hide]);
       if(ghost.children.at(-1)?.userData.coating && ghost.children.at(-1).geometry!==coat?.mesh.geometry)ghost.remove(ghost.children.at(-1));
       if(coat&&!ghost.children.at(-1)?.userData.coating)ghost.add(coat.mesh.clone());
@@ -588,7 +601,7 @@ export async function createBoard(canvas){
   }
   function slip(p){
 
-    const g=blanks[p.food].group.clone();position(g,p,.1);scene.add(g);
+    const g=foodModel(p.food).group.clone();position(g,p,.1);scene.add(g);
     const length=Math.hypot(p.x,p.z)||1;
     falls.push({node:g,start:clock,x:p.x,z:p.z,dx:p.x/length,dz:p.z/length});run();
   }
@@ -624,6 +637,12 @@ export async function createBoard(canvas){
     breadUV(x,z){return {i:-1,u:x/bread.width+.5,v:z/bread.height+.5,x,z};},
     land(p){landing.set(p,clock);run();},
 
-    handle(i){const p=recipe.pieces[i];if(!p)return null;const edge=blanks[p.food].width*.5;const height=heights[i]+blanks[p.food].depth+(offsets[i]?.(edge,0)||0);return {...screen(p.x+Math.cos(p.a)*edge,height,p.z-Math.sin(p.a)*edge),height};}
+    handle(i){
+      const p=recipe.pieces[i];if(!p)return null;
+      const ref=foodModel(p.food),edge=ref.width*.5,height=heights[i]+ref.depth+(offsets[i]?.(edge,0)||0);
+      const at=screen(p.x+Math.cos(p.a)*edge,height,p.z-Math.sin(p.a)*edge);
+      if(pantry[p.food].bread){at.x=clamp(at.x,23,canvas.clientWidth-23);at.y=clamp(at.y,23,canvas.clientHeight-23);}
+      return {...at,height};
+    }
   };
 }

@@ -48,7 +48,11 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     if(!Object.hasOwn(targets,event.key))return;
     event.preventDefault();
     const target=targets[event.key];
-    if(target){target.focus({preventScroll:true});target.scrollIntoView({block:'nearest',inline:'nearest',behavior:motion()});}
+    if(!target)return;
+    target.focus({preventScroll:true});
+    if(target===strip.firstElementChild||target===strip.lastElementChild){
+      strip.scrollTo({left:target===strip.firstElementChild?0:strip.scrollWidth,behavior:motion()});
+    }else target.scrollIntoView({block:'nearest',inline:'nearest',behavior:motion()});
   });
 
   // Horizontal swipes browse. Pulling a food upward places it at the release point.

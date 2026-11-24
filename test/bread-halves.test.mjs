@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parkedCrown } from '../bread-crown.js';
-import { emptyRecipe, photoCoverFor, tableCoverFor, readRecipe, recipeFromHash } from '../recipe.js';
+import { breads, ingredients, emptyRecipe, photoCoverFor, tableCoverFor, readRecipe, recipeFromHash } from '../recipe.js';
 
 test('the parked crust clears the plate even for a wide, asymmetric loaf', () => {
   const perimeter = [[-.5, -.14], [.4, -.25], [.48, .17], [-.28, .30]];
@@ -50,4 +50,15 @@ test('removing a top half survives sharing and takes precedence over stale cover
   assert.deepEqual(shared.pieces, [piece]);
   assert.equal(tableCoverFor(shared), 'open');
   assert.equal(photoCoverFor(shared), 'open');
+});
+
+test('all four shelf halves follow the condiments and round-trip with their own placements', () => {
+  const halves=ingredients.slice(-4);
+  assert.deepEqual(halves.map(half=>half.id), Object.values(breads).map(bread=>bread.crown));
+  assert.equal(ingredients.at(-5).id, 'mayonez');
+  const pieces=halves.map(({id}, i)=>({food:id,x:1.48,z:-1.4,a:i,dem:0,water:0}));
+  const draft={...emptyRecipe('acma'),coverRemoved:true,pieces};
+  const shared=recipeFromHash('#simit='+btoa(JSON.stringify(draft)));
+  assert.deepEqual(shared.pieces,pieces);
+  assert.equal(shared.coverRemoved,true);
 });

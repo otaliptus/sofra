@@ -34,7 +34,10 @@ export const ingredients = [
     ['pul-biber','Pul biber','spice'],['karabiber','Karabiber','spice'],
     ['kekik','Kekik','spice'],['nane','Nane','spice'],
     ['ketcap','Ketçap','sauce'],['mayonez','Mayonez','sauce']
-  ].map(([id,name,kind])=>({id,name,kind}))
+  ].map(([id,name,kind])=>({id,name,kind})),
+  ...Object.entries(breads).map(([bread,spec])=>({
+    id:spec.crown,kind:'topping',bread,name:(bread==='tas-ekmek'?'Taş ekmek':spec.name)+' üst yarısı'
+  }))
 ];
 export const pantry=Object.fromEntries(ingredients.map(d=>[d.id,d]));
 export const cloths={
@@ -70,7 +73,8 @@ export function readRecipe(r) {
   };
   return {...emptyRecipe(r.bread,cloth),...cover,strokes:marks(r.strokes),pieces:r.pieces.map(p=>{
     const dem=clamp(Math.floor(Number(p.dem)||0),0,10);
-    return {food:p.food,x:round(clamp(p.x,-1.3,1.3)),z:round(clamp(p.z,-.8,.8)),a:round(p.a%(Math.PI*2)),dem,
+    const xLimit=pantry[p.food].bread?1.6:1.3,zLimit=pantry[p.food].bread?1.6:.8;
+    return {food:p.food,x:round(clamp(p.x,-xLimit,xLimit)),z:round(clamp(p.z,-zLimit,zLimit)),a:round(p.a%(Math.PI*2)),dem,
       water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(p.marks?.length?{marks:marks(p.marks)}:{})};
   })};
 }
