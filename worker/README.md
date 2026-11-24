@@ -8,6 +8,8 @@ The board stores a normalized recipe, camera framing and a plain-text title. The
 
 A browser can vote once on each other person's recipe per Istanbul calendar day. Weekly votes accumulate from Monday. All-time scores survive cleanup of old vote receipts. First pages are cached for up to 20 seconds. The individual post always checks its current visibility.
 
+Each browser can publish up to 10 recipes per Istanbul calendar day. The daily total includes recipes the author later removes.
+
 ## Moderating the board
 
 Open the sofra-pano database in the Cloudflare D1 console using an account with D1 access. This query lists reports for visible posts.
