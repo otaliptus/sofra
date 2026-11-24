@@ -1,15 +1,15 @@
 import { editHistory } from './undo-history.js';
 import { mountMusic, musicCredits } from './music.js?v=playback-history';
-import { createBoard, cameraNames } from './board-3d.js?v=servings';
+import { createBoard, cameraNames } from './board-3d.js?v=table-halves';
 import { mountShelf } from './shelf.js?v=servings';
-import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=servings';
+import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=table-halves';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
 const $=selector=>document.querySelector(selector);
 const canvas=$('#scene'),stage=$('#stage'),sheet=$('#sheet'),turn=$('#turn'),knife=$('#knife');
 const pieceAction=$('#piece-action'),undoAction=$('#undo-action');
-const breadSelection=-2;
+const breadSelection=-2,coverSelection=-3;
 const coverSelect=$('#photo-cover');
 for(const [id,name] of Object.entries(photoCovers))coverSelect.add(new Option(name,id));
 const storeKey='sofra.simit.workbench.v2';
@@ -19,6 +19,7 @@ function draft(){try{return JSON.parse(read(storeKey));}catch{return null;}}
 const shared=recipeFromHash(location.hash),stored=shared?null:draft(),savedRecipe=readRecipe(stored);
 let recipe=shared||savedRecipe||emptyRecipe();
 function selectionFor(index){
+  if(index===coverSelection)return coverSelection;
   if(index===breadSelection && recipe.strokes.length)return breadSelection;
   return Number.isInteger(index)&&recipe.pieces[index]?index:-1;
 }
@@ -67,13 +68,14 @@ function hint(message,duration=2600){
   if(message&&duration)noticeTimer=setTimeout(()=>node.hidden=true,duration);
 }
 function showHandle(){
-  const photo=mode==='camera',editing=!photo&&!gesture;
-  const p=photo?board?.coverHandle():board?.handle(selected);
+  const editing=mode==='edit'&&!gesture,cover=mode==='camera'||selected===coverSelection;
+  const p=cover?board?.coverHandle():board?.handle(selected);
+  turn.dataset.target=cover?'cover':'piece';
   turn.hidden=!p||Boolean(gesture&&!['cover-turn','turn'].includes(gesture.kind));
-  turn.setAttribute('aria-label',photo?'Üst parçayı döndür':'Malzemeyi döndür');
+  turn.setAttribute('aria-label',cover?'Üst parçayı döndür':'Malzemeyi döndür');
   if(!turn.hidden){turn.style.left=p.x+'px';turn.style.top=p.y+'px';}
   const markedBread=selected===breadSelection&&recipe.strokes.length>0;
-  pieceAction.hidden=!editing||recipe.closed||(!p&&!markedBread);
+  pieceAction.hidden=!editing||recipe.closed||cover||(!p&&!markedBread);
   if(!pieceAction.hidden)pieceAction.setAttribute('aria-label',(markedBread?breads[recipe.bread].name:pantry[recipe.pieces[selected].food].name)+' · Kaldır');
   undoAction.disabled=!historyStack.length;
   undoAction.title='Geri al · '+historyStack.length+' adım';
@@ -81,15 +83,18 @@ function showHandle(){
 }
 function showCoverChoice(){
   const custom=coverSelect.querySelector('[value="custom"]');
-  custom.hidden=custom.disabled=!recipe.photoCoverPose;
+  custom.hidden=custom.disabled=!(recipe.photoCoverPose||recipe.coverPose);
   coverSelect.value=photoCoverFor(recipe);
 }
 function keepCover(fromWheel=false){
   const pose=boundedCoverPose(board.coverPose());
-  if(recipe.photoCover!=='custom'||JSON.stringify(recipe.photoCoverPose)!==JSON.stringify(pose)){
-    if(fromWheel)checkpointWheel('cover');else checkpoint();
-  }
-  recipe.photoCoverPose=pose;recipe.photoCover='custom';
+  if(!pose)return;
+  if(fromWheel)checkpointWheel('cover');else checkpoint();
+  if(mode==='edit'){
+    recipe.coverPose=pose;recipe.closed=false;
+    delete recipe.photoCover;delete recipe.photoCoverPose;
+    board.fitEditor();lidButton();
+  }else{recipe.photoCoverPose=pose;recipe.photoCover='custom';}
   showCoverChoice();showHandle();save();
 }
 function coverHint(){
@@ -101,7 +106,11 @@ function lidButton(){
   const button=$('#lid');button.hidden=mode!=='edit'||!breads[recipe.bread??'simit'].closable;
   button.textContent=recipe.closed?'Sandviçi aç':'Sandviçi kapat';button.setAttribute('aria-pressed',String(!!recipe.closed));
 }
-$('#lid').onclick=()=>{checkpoint();recipe.closed=!recipe.closed;delete recipe.photoCover;selected=-1;chooseBrush(null);update();};
+$('#lid').onclick=()=>{
+  checkpoint();recipe.closed=!recipe.closed;
+  delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
+  selected=-1;chooseBrush(null);update();
+};
 function update(settle=false,focusPiece){
   board.sync(recipe,settle);if(focusPiece)selected=recipe.pieces.indexOf(focusPiece);
   lidButton();showCloth();showHandle();save();
@@ -190,6 +199,7 @@ function releasePiece(p,previous=-1){
     recipe.pieces.push(p);update(previous>=0,p);if(selected>=0)board.land(p);clink(p.food);hint('');
   }else{selected=-1;update(true);board.slip(p);clink('drop');}
 }
+function moveCoverHint(){hint('Üst parçayı yana çekip içini doldur.');}
 function pickFood(id,x,z){
   if(!board||gesture)return;
   if(mode==='camera'){leaveCamera();return;}
@@ -198,7 +208,12 @@ function pickFood(id,x,z){
   chooseBrush(null);
   if(x===undefined){
     if(id==='cay'){x=.48;z=.32;}
-    else{({x,z}=board.landingSpot(recipe.pieces.length));}
+    else{
+      const spot=board.landingSpot(recipe.pieces.length);
+      if(!spot){moveCoverHint();return;}
+      ({x,z}=spot);
+    }
+    if(board.covers(x,z)){moveCoverHint();return;}
   }
   releasePiece(makePiece(id,x,z));
 }
@@ -207,13 +222,17 @@ function shelfPoint(x,y){
 }
 const resetShelf=mountShelf(stage,pickFood,(food,x,y)=>{
   if(!board||gesture)return;
+  const box=stage.getBoundingClientRect();
+  if(mode==='edit'&&board.pickCover(box.left+x,box.top+y)){moveCoverHint();return;}
   if(isTool(food)&&!recipe.closed&&mode==='edit'){
-    const box=stage.getBoundingClientRect(),hit=board.pick(box.left+x,box.top+y,false);
+    const hit=board.pick(box.left+x,box.top+y,false);
     chooseBrush(food);if(edible(hit))placeServing(hit);
   }else{const p=shelfPoint(x,y);pickFood(food,p.x,p.z);}
 },ingredients,(food,x,y)=>{
   if(!board||mode!=='edit'||recipe.closed)return;
   if(food&&pantry[food].kind==='topping'){
+    const box=stage.getBoundingClientRect();
+    if(board.pickCover(box.left+x,box.top+y)){board.lift(null);return false;}
     const p=shelfPoint(x,y);board.lift(makePiece(food,p.x,p.z));
   }else {board.lift(null);return !food;}
 });
@@ -268,9 +287,10 @@ function freeRotate(dx,dy){
 function begin(e){
   if(!board||gesture||![0,2].includes(e.button))return;
   canvas.setPointerCapture(e.pointerId);
-  if(mode==='camera'&&e.button===0){
+  if(e.button===0){
     const anchor=board.pickCover(e.clientX,e.clientY);
     if(anchor){
+      if(mode==='edit'){chooseBrush(null);selected=coverSelection;}
       gesture={kind:'cover-move',id:e.pointerId,anchor,px:e.clientX,py:e.clientY,moved:false};
       canvas.dataset.cursor='held';hint('');showHandle();return;
     }
@@ -305,6 +325,9 @@ function move(e){
     if(!gesture&&e.pointerType==='mouse')canvas.dataset.cursor=board.pickCover(e.clientX,e.clientY)?'cover':'orbit';
     return;
   }
+  if(!gesture&&board.pickCover(e.clientX,e.clientY)){
+    knife.hidden=true;canvas.dataset.cursor='cover';return;
+  }
   moveKnife(e);
   if(!gesture){
     const hit=board.pick(e.clientX,e.clientY);
@@ -318,7 +341,10 @@ function move(e){
     g.moved=true;
     // Sample fast drags between events so gaps in the bread break the stroke.
     const steps=Math.min(36,Math.max(1,Math.ceil(Math.hypot(dx,dy)/7)));
-    for(let k=1;k<=steps;k++)inkPoint(board.pick(g.px+dx*k/steps,g.py+dy*k/steps,false));
+    for(let k=1;k<=steps;k++){
+      const x=g.px+dx*k/steps,y=g.py+dy*k/steps;
+      inkPoint(board.pickCover(x,y)?null:board.pick(x,y,false));
+    }
     g.px=e.clientX;g.py=e.clientY;return;
   }
   if(gesture.kind!=='piece')return;
@@ -344,7 +370,9 @@ function ended(e){
     if(e.pointerType==='touch')knife.hidden=true;
   }else if(g.kind==='piece'){
     board.lift(null);
-    if(e.type!=='pointercancel'&&g.moved)releasePiece(g.next,g.i);
+    if(e.type==='pointerup'&&g.moved){
+      if(board.pickCover(e.clientX,e.clientY))moveCoverHint();else releasePiece(g.next,g.i);
+    }
     else if(e.type!=='pointercancel'&&g.from.food==='cay')openTea();
   }
   showHandle();
@@ -353,7 +381,7 @@ canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('dblclick',e=>{
   if(!board)return;
   if(mode==='camera'){if(!board.pickCover(e.clientX,e.clientY))camera('tilt');return;}
-  if(!board.pick(e.clientX,e.clientY)){board.resetOrbit();showHandle();}
+  if(!board.pickCover(e.clientX,e.clientY)&&!board.pick(e.clientX,e.clientY)){board.resetOrbit();showHandle();}
 });
 canvas.addEventListener('pointerdown',begin);canvas.addEventListener('pointermove',move);
 canvas.addEventListener('pointerup',ended);canvas.addEventListener('pointercancel',ended);
@@ -371,7 +399,7 @@ function twistCover(delta,fromWheel=false){
 }
 turn.onpointerdown=e=>{
   if(gesture||e.button!==0)return;
-  if(mode==='camera'){
+  if(mode==='camera'||selected===coverSelection){
     const pose=board.coverPose();if(!pose)return;
     const height=board.coverHandle().height,start=coverAngle(e,pose,height);
     if(start===null)return;
@@ -407,22 +435,20 @@ turn.onpointerup=turn.onpointercancel=e=>{
 };
 turn.onlostpointercapture=e=>{if(gesture?.kind==='cover-turn'||gesture?.kind==='turn')turn.onpointercancel(e);};
 turn.onclick=e=>{
-  if(mode==='camera'){if(e.detail===0)twistCover(Math.PI/12);return;}
+  if(mode==='camera'||selected===coverSelection){if(e.detail===0)twistCover(Math.PI/12);return;}
   if(e.detail!==0||selected<0)return;
   checkpoint();recipe.pieces[selected].a=round((recipe.pieces[selected].a+Math.PI/12)%(2*Math.PI));update();
 };
 canvas.addEventListener('wheel',e=>{
-  if(!board||gesture)return;
-  if(mode==='camera'){
-    if(!e.ctrlKey&&e.deltaY&&board.pickCover(e.clientX,e.clientY)){
-      e.preventDefault();
-      const pixels=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?canvas.clientHeight:1);
-      twistCover(clamp(pixels*.002,-Math.PI/8,Math.PI/8),true);
-    }
-    return;
+  if(!board||gesture||e.ctrlKey||!e.deltaY)return;
+  if(board.pickCover(e.clientX,e.clientY)){
+    e.preventDefault();
+    if(mode==='edit'){chooseBrush(null);selected=coverSelection;}
+    const pixels=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?canvas.clientHeight:1);
+    twistCover(clamp(pixels*.002,-Math.PI/8,Math.PI/8),true);return;
   }
+  if(mode==='camera')return;
   const i=board.pick(e.clientX,e.clientY)?.i??-1;if(i<0||recipe.closed)return;
-  if(!e.deltaY)return;
   e.preventDefault();selected=i;const piece=recipe.pieces[i];checkpointWheel(piece);
   piece.a=round((piece.a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
 },{passive:false});
@@ -433,7 +459,7 @@ function dialog(title,html){
 }
 sheet.addEventListener('close',()=>{cancelAnimationFrame(teaFrame);});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
-$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
+$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Üst parça tabağın yanında başlar. Sofrada ve Foto’da sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){
@@ -446,7 +472,7 @@ function startBreakfast(id,cloth,random=false){
   }
   if(sheet.open)sheet.close();
   if(mode==='camera')leaveCamera();
-  board.resetOrbit();update();hint(random?'':'Bir malzeme seç.');
+  board.resetOrbit();update();hint(random?'':'Üst parçayı tutup taşıyabilirsin.');
 }
 $('#grand-reset').onclick=()=>{
   if(!board||gesture)return;
@@ -545,12 +571,19 @@ document.addEventListener('keydown',e=>{
   if(sheet.open||!board||gesture||e.target===coverSelect||e.target.closest?.('#radio'))return;
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return;}
   if(e.key==='Escape'){if(mode==='camera')leaveCamera();else{chooseBrush(null);selected=-1;showHandle();}return;}
-  if(mode==='camera'){
+  if(mode==='edit'&&e.target===canvas&&['[',']'].includes(e.key)){
+    const choices=recipe.closed?[]:recipe.pieces.map((_,i)=>i);
+    choices.push(coverSelection);
+    const i=choices.indexOf(selected),step=e.key==='['?-1:1;
+    selected=choices[i<0?(step<0?choices.length-1:0):(i+step+choices.length)%choices.length];
+    chooseBrush(null);showHandle();return;
+  }
+  if(mode==='camera'||(selected===coverSelection&&(e.target===canvas||e.target===turn))){
     const dirs={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-16],ArrowDown:[0,16]};
     if(e.key.toLowerCase()==='r'&&!e.metaKey&&!e.ctrlKey&&board.coverPose()){
       e.preventDefault();twistCover((e.shiftKey?-1:1)*Math.PI/90);return;
     }
-    if(e.target===turn&&dirs[e.key]){
+    if((mode==='edit'||e.target===turn)&&dirs[e.key]){
       e.preventDefault();
       const pose=board.coverPose(),yaw=board.pose().yaw,[right,down]=dirs[e.key].map(Math.sign);
       board.adjustCover({...pose,x:pose.x+.015*(right*Math.cos(yaw)+down*Math.sin(yaw)),
@@ -561,10 +594,9 @@ document.addEventListener('keydown',e=>{
   }
 
   if(e.target!==canvas||recipe.closed)return;
-  const n=recipe.pieces.length;
-  if(e.key==='['||e.key===']'){const step=e.key==='['?-1:1;selected=n?(selected<0?(step<0?n-1:0):(selected+step+n)%n):-1;chooseBrush(null);showHandle();return;}
   if(brush&&['Enter',' '].includes(e.key)){
-    e.preventDefault();const {x,z}=board.landingSpot(recipe.strokes.length);placeServing(board.breadUV(x,z));return;
+    e.preventDefault();const spot=board.landingSpot(recipe.strokes.length);
+    if(spot)placeServing(board.breadUV(spot.x,spot.z));else moveCoverHint();return;
   }
   const p=recipe.pieces[selected];if(!p)return;
   if(e.key==='Enter'&&p.food==='cay'){e.preventDefault();openTea();return;}
@@ -578,5 +610,5 @@ window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected
 window.advanceTime=ms=>board?.step(ms);
 try{
   board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
-  hint(recipe.pieces.length||recipe.strokes.length?'':'Bir malzeme seç.',3600);
+  hint(recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
 }catch(err){console.error(err);hint('Sofra açılamadı. WebGL destekli bir tarayıcıda yenile.',0);}

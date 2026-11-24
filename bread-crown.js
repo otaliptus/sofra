@@ -22,18 +22,26 @@ export function crownHeight(mask,depth){
   };
 }
 
-// Try a few positions around the plate. The default is a diagonal tuck;
-// visible food and especially tea have priority when the table is crowded.
-export function crownPlacement(mode,bread,crown,pieces,foods,plateRadius){
+// Leave a little cloth between the nearest crust and the rim. Every filling
+// can move independently without causing the parked bread to change sides.
+export function parkedCrown(crown,plateRadius){
+  const angle=-2.86,dx=Math.cos(angle),dz=Math.sin(angle),yaw=-.23;
+  const c=Math.cos(yaw),s=Math.sin(yaw);
+  const inside=Math.min(...crown.perimeter.map(([x,z])=>(c*x+s*z)*dx+(c*z-s*x)*dz));
+  const distance=plateRadius+.055-inside;
+  return {x:distance*dx,z:distance*dz,yaw};
+}
+
+// Tuck the top diagonally for the half-covered photo, favouring visible food.
+export function crownPlacement(mode,bread,crown,pieces,foods){
   if(mode==='full')return {x:0,z:0,yaw:0};
-  const side=mode==='side';
   let best,lowest=Infinity;
   for(let i=0;i<12;i++){
     const a=-2.22+i*Math.PI/6,dx=Math.cos(a),dz=Math.sin(a);
     const edges=bread.perimeter.map(([x,z])=>x*dx+z*dz);
     const span=Math.max(...edges)-Math.min(...edges);
-    const distance=side?Math.max(span,plateRadius+.24*span):.35*span;
-    const x=distance*dx,z=distance*dz,yaw=(dx<0 ? -1 : 1)*(side ? .30 : .12);
+    const distance=.35*span;
+    const x=distance*dx,z=distance*dz,yaw=(dx<0 ? -.12 : .12);
     const c=Math.cos(yaw),s=Math.sin(yaw);
     let score=.09*(1-Math.cos(i*Math.PI/6));
     for(const p of pieces){

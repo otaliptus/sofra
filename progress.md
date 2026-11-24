@@ -77,3 +77,7 @@ The music note opens a compact player with pause/resume, previous/next, mute and
 Kaldır and Geri al are independent. Applying a serving selects the surface that received it. On coated food, Kaldır lists the coatings and offers to remove the whole ingredient separately. Removing bal kaymak preserves the cheese's position, rotation and other coatings. The draft stores up to 200 undo checkpoints as compact differences. Wheel rotation is grouped per gesture, and cancelled drawing leaves the history intact.
 
 Exercised coating, rotating, removing, undoing and reloading with a mouse and a 320px touch viewport. Verified 42 keyboard undos after reload, the full 200-step serialization limit, resumed audio on both sides of the initial cue, ten-second seeking, strict autoplay, and recovery from a failed stream.
+
+All four breads now start with their upper half resting on the cloth beside the plate. The workbench fits the plate and crust together and turns the initial overhead view on narrow screens. Dragging, turning and undoing the upper half work during assembly. The workbench saves its placement with the recipe and Foto inherits it. Photo-only poses remain independent.
+
+Browser checks covered grabbing each bread, turning it, undoing to the initial placement, and composing a separate photo. Verified touch drags on a 360px viewport, restoration after reload, keyboard selection and nudging, stone sandwich opening, and 960px square photo export.

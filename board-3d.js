@@ -5,9 +5,9 @@ import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, clamp, photoCoverFor, boundedCoverPose } from './recipe.js?v=movable-cover';
+import { breads, cloths, ingredients, clamp, photoCoverFor, boundedCoverPose } from './recipe.js?v=table-halves';
 import { simitRing } from './simit-ring.js';
-import { crownHeight, crownPlacement } from './bread-crown.js';
+import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=table-halves';
 
 
 export const cameraNames={top:'Üstten',tilt:'Eğik',low:'Alçak',corner:'Köşeden'};
@@ -220,17 +220,39 @@ export async function createBoard(canvas){
     sample(bread,bread.group);recipe.pieces.forEach((p,i)=>sample(blanks[p.food],nodes[i]));
     if(lid?.group.visible)sample(lid,lid.group);return points;
   }
+  function frameEditor(){
+    const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
+    const c=Math.cos(orbit.yaw),s=Math.sin(orbit.yaw),pitch=Math.sin(orbit.elevation);
+    let left=-plateRadius,right=plateRadius,bottom=-plateRadius*pitch,top=plateRadius*pitch+.03;
+    function include(pose){
+      const cx=Math.cos(pose.yaw),sx=Math.sin(pose.yaw);
+      for(const [px,pz] of lid.perimeter){
+        const x=pose.x+cx*px+sx*pz,z=pose.z-sx*px+cx*pz;
+        const horizontal=x*c-z*s,vertical=-(x*s+z*c)*pitch;
+        left=Math.min(left,horizontal);right=Math.max(right,horizontal);
+        bottom=Math.min(bottom,vertical+clothHeight);top=Math.max(top,vertical+lid.depth);
+      }
+    }
+    if(lid?.group.visible){
+      include(lid.parked);
+      if(recipe.coverPose)include(recipe.coverPose);
+    }
+    const unit=Math.min(Math.min(w,h)*.94/(2*plateRadius),w*.94/(right-left),h*.90/(top-bottom));
+    const hw=w/(2*unit),hh=h/(2*unit);
+    // Preserve the plate's usual centre wherever there is room for both halves.
+    const x=clamp(0,right-hw*.94,left+hw*.94),y=clamp(0,top-hh*.90,bottom+hh*.90);
+    editorCamera.left=x-hw;editorCamera.right=x+hw;editorCamera.top=y+hh;editorCamera.bottom=y-hh;
+    editorCamera.updateProjectionMatrix();
+  }
   function cameraPosition(){
     if(view)aimCamera(photoCamera,orbit,photoSetup.target,photoSetup.distance);
-    else aimCamera(editorCamera,orbit,origin,4);
+    else {frameEditor();aimCamera(editorCamera,orbit,origin,4);}
     render();
   }
   function resize(){
     const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
     renderer.setSize(w,h,false);framePixels=Math.min(w*.91,h*.93);
-    const unit=Math.min(w*.94,h*.94)/(2*plateRadius);
-    editorCamera.left=-w/(2*unit);editorCamera.right=-editorCamera.left;
-    editorCamera.top=h/(2*unit);editorCamera.bottom=-editorCamera.top;editorCamera.updateProjectionMatrix();
+    if(!view&&!editPose)orbit={yaw:w<h*.93?Math.PI/3:0,elevation:Math.PI/2};
     if(view){
       photoCamera.aspect=w/h;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan*h/framePixels));
       photoCamera.updateProjectionMatrix();
@@ -352,14 +374,18 @@ export async function createBoard(canvas){
   function position(group,p,h){group.position.set(p.x,h,p.z);group.rotation.set(0,p.a,0);}
   function placeCover(){
     if(lid)lid.group.visible=false;
-    const mode=view?photoCoverFor(recipe):(recipe.closed?'full':'open');
+    const mode=view?photoCoverFor(recipe):(recipe.closed?'full':recipe.coverPose?'custom':'side');
     if(mode==='open')return;
     if(!crownCache.has(breadId)){
       const b=breads[breadId],upper=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[breadId],cutFace:art[b.asset],ring:breadId==='simit'});
+      upper.parked=parkedCrown(upper,plateRadius);
+      upper.radius=.02+Math.max(...upper.perimeter.map(([x,z])=>Math.hypot(x,z)));
       crownCache.set(breadId,upper);scene.add(upper.group);
     }
     lid=crownCache.get(breadId);lid.group.visible=true;
-    const pose=mode==='custom'?recipe.photoCoverPose:crownPlacement(mode,bread,lid,recipe.pieces,blanks,plateRadius);
+    let pose=lid.parked;
+    if(mode==='custom')pose=(view&&recipe.photoCoverPose)||recipe.coverPose;
+    else if(mode!=='side')pose=crownPlacement(mode,bread,lid,recipe.pieces,blanks);
     settleCover(pose,mode==='half'||mode==='custom' ? .48 : .28);
   }
   function settleCover({x,z,yaw},maxSlope){
@@ -367,14 +393,24 @@ export async function createBoard(canvas){
       // The sliced ring yields over a filling rather than balancing the whole
       // crown on the highest olive. Reuse the topping contact solver at a
       // shallower slope, with original vertices so dragging cannot accumulate bends.
-      const bend=drape({x,z,a:yaw},recipe.pieces.length,0,lid,.32);
-      for(const mesh of lid.group.children){
-        const vertices=mesh.geometry.attributes.position;
-        const original=mesh.userData.unbentY??=Float32Array.from({length:vertices.count},(_,i)=>vertices.getY(i));
-        for(let i=0;i<vertices.count;i++)vertices.setY(i,original[i]+bend(vertices.getX(i),vertices.getZ(i)));
-        vertices.needsUpdate=true;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
+      const onCloth=Math.hypot(x,z)>plateRadius+lid.radius&&recipe.pieces.every(p=>{
+        const ref=blanks[p.food];
+        return Math.hypot(x-p.x,z-p.z)>lid.radius+Math.hypot(ref.width,ref.height)/2;
+      });
+      // A ring lying flat on the cloth keeps the original mesh, including
+      // through repeated ingredient edits and drags around the parked spot.
+      const bend=onCloth?null:drape({x,z,a:yaw},recipe.pieces.length,0,lid,.32);
+      if(bend||lid.bend){
+        for(const mesh of lid.group.children){
+          const vertices=mesh.geometry.attributes.position;
+          const original=mesh.userData.unbentY??=Float32Array.from({length:vertices.count},(_,i)=>vertices.getY(i));
+          for(let i=0;i<vertices.count;i++){
+            vertices.setY(i,original[i]+(bend?bend(vertices.getX(i),vertices.getZ(i)):0));
+          }
+          vertices.needsUpdate=true;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
+        }
       }
-      lid.bend=bend;lid.group.position.set(x,-.00035,z);lid.group.rotation.set(0,yaw,0);
+      lid.bend=bend;lid.group.position.set(x,onCloth?clothHeight+.00085:-.00035,z);lid.group.rotation.set(0,yaw,0);
       return;
     }
     const c=Math.cos(yaw),s=Math.sin(yaw);
@@ -384,8 +420,13 @@ export async function createBoard(canvas){
     lid.group.rotation.set(-Math.atan(plane.sz),yaw,Math.atan(plane.sx),'YXZ');
   }
   function coverPose(){
-    if(!view||!lid?.group.visible)return null;
+    if(!lid?.group.visible)return null;
     return {x:lid.group.position.x,z:lid.group.position.z,yaw:lid.group.rotation.y};
+  }
+  function covers(x,z){
+    const pose=coverPose();if(!pose)return false;
+    const [lx,lz]=relative({x:pose.x,z:pose.z,a:pose.yaw},x,z);
+    return lid.mask.alpha(lx/lid.width+.5,lz/lid.height+.5)>=.49;
   }
   function coverHandle(){
     if(!coverPose())return null;
@@ -500,6 +541,7 @@ export async function createBoard(canvas){
       heights.push(height);position(g,p,height);scene.add(g);nodes.push(g);paintPiece(p,i);
     }
     placeCover();
+    if(!view)frameEditor();
     render();
   }
   function paintLoaf(strokes){
@@ -576,8 +618,8 @@ export async function createBoard(canvas){
     return out;
   }
   paintBread([]);new ResizeObserver(resize).observe(canvas);resize();
-  return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
-    coverPose,coverHandle,pickCover,coverPlanePoint,dragCover,
+  return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,fitEditor:cameraPosition,
+    coverPose,coverHandle,pickCover,covers,coverPlanePoint,dragCover,
     adjustCover(pose){settleCover(boundedCoverPose(pose),.48);render();},
     restoreCover(){placeCover();render();},
     changeCloth(id){setCloth(id);render();},
@@ -586,9 +628,9 @@ export async function createBoard(canvas){
     landingSpot(n){
       for(let k=0;k<32;k++){
         const angle=(n+k)*2.39996+.25,x=.29*Math.cos(angle),z=.27*Math.sin(angle);
-        if(hasBread(x,z))return {x,z};
+        if(hasBread(x,z)&&!covers(x,z))return {x,z};
       }
-      return {x:0,z:0};
+      return null;
     },
     breadUV(x,z){return {i:-1,u:x/bread.width+.5,v:z/bread.height+.5,x,z};},
     land(p){landing.set(p,clock);run();},

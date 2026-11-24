@@ -75,9 +75,9 @@ nav button:hover,.rail-end:hover,#views button:hover { color: white; }
 #scene[data-cursor="spread"] { cursor: none; }
 #coach { position: absolute; left: 50%; top: 12px; transform: translateX(-50%) rotate(-1.2deg); padding: 9px 13px; max-width: 88%; width: max-content; text-align: center; background: var(--paper); color: #393022; font-size: clamp(12px,2.1dvh,16px); font-weight: 500; box-shadow: 1px 2px 5px #22170c55; pointer-events: none; }
 #turn { position: absolute; transform: translate(-50%,-50%); border-radius: 50%; width: 29px; height: 29px; display: grid; place-items: center; background: #f0eade; color: #352f28; font: bold 23px/1 Arial,sans-serif; box-shadow:0 1px 4px #2c150d70; cursor: grab; touch-action: none; }
-.camera #turn::before { content:""; position:absolute; inset:-8px; border-radius:50%; }
-.camera #turn:active { cursor:grabbing; }
-.camera #scene[data-cursor="cover"] { cursor:move; }
+#turn[data-target="cover"]::before { content:""; position:absolute; inset:-8px; border-radius:50%; }
+#turn:active { cursor:grabbing; }
+#scene[data-cursor="cover"] { cursor:grab; }
 .camera #scene[data-cursor="held"] { cursor:grabbing; }
 #knife { position: absolute; pointer-events: none; transform:translate(-8%,-50%) rotate(var(--tilt,-19deg)); transform-origin:8% 50%; width:clamp(85px,16dvh,155px); filter: drop-shadow(2px 4px 3px #25160865); }
 footer { min-width:0; background: var(--dark); padding-bottom: env(safe-area-inset-bottom); }
