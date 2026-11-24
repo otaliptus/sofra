@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#1c1510">
   <meta name="description" content="Ekmeğini seç, kahvaltını hazırla ve fotoğrafını çek.">
   <link rel="icon" href="data:,"><title>Sofra — Kahvaltı hazırla</title>
-  <link rel="stylesheet" href="workbench.css?v=servings">
+  <link rel="stylesheet" href="workbench.css?v=playback-history">
   <script>if(location.hash.startsWith('#sofra='))location.replace('table.html'+location.hash)</script>
 </head>
 <body>
@@ -14,16 +14,27 @@
       <div id="nav-left"><button id="fresh">Ekmek seç</button><button id="help">Yardım</button></div>
       <button id="back" hidden>Geri</button>
       <label id="cover-control" hidden><span>Üst parça</span> <select id="photo-cover"></select></label>
-      <div id="radio" role="group" aria-label="Müzik">
-        <button id="music-prev" class="track-step previous" type="button" title="Önceki parça" aria-label="Önceki parça"><span aria-hidden="true"></span></button>
-        <button id="music-play" type="button" aria-label="Müziği çal" title="Müziği çal"><span aria-hidden="true"></span></button>
-        <button id="music-next" class="track-step" type="button" title="Sonraki parça" aria-label="Sonraki parça"><span aria-hidden="true"></span></button>
-        <span id="track-name" aria-live="polite">Muhabbet</span>
-        <button id="audio" type="button" aria-label="Sesi kapat" title="Sesi kapat">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9h4l5-4v14l-5-4H3z"/><path class="waves" d="M15 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/><path class="silence" d="m16 9 5 6m0-6-5 6"/>
-          </svg>
+      <div id="radio">
+        <button id="music-toggle" type="button" title="Müzik" aria-label="Müzik" aria-expanded="false" aria-controls="music-panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17V6l11-2v11M8 9l11-2"/><ellipse cx="5.5" cy="17.5" rx="2.5" ry="2" fill="currentColor"/><ellipse cx="16.5" cy="15.5" rx="2.5" ry="2" fill="currentColor"/></svg>
         </button>
+        <div id="music-panel" role="group" aria-label="Müzik çalar" hidden>
+          <div class="now-playing"><span id="track-name" aria-live="polite">Muhabbet</span>
+            <button id="audio" type="button" aria-label="Sesi kapat" title="Sesi kapat">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9h4l5-4v14l-5-4H3z"/><path class="waves" d="M15 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/><path class="silence" d="m16 9 5 6m0-6-5 6"/>
+              </svg>
+            </button>
+          </div>
+          <div class="transport">
+            <button id="music-prev" class="track-step previous" type="button" title="Önceki parça" aria-label="Önceki parça"><span aria-hidden="true"></span></button>
+            <button id="music-rewind" type="button" title="10 saniye geri" aria-label="10 saniye geri">−10</button>
+            <button id="music-play" type="button" aria-label="Müziği çal" title="Müziği çal"><span aria-hidden="true"></span></button>
+            <button id="music-forward" type="button" title="10 saniye ileri" aria-label="10 saniye ileri">+10</button>
+            <button id="music-next" class="track-step" type="button" title="Sonraki parça" aria-label="Sonraki parça"><span aria-hidden="true"></span></button>
+          </div>
+          <span id="music-time"></span>
+        </div>
       </div>
       <audio id="soundtrack" preload="none"></audio>
       <button id="lid" hidden>Sandviçi kapat</button>
@@ -34,7 +45,10 @@
       <canvas id="scene" tabindex="0" aria-label="Simit. Malzeme eklemek için tepsiyi kullan."></canvas>
       <div id="finder" hidden></div>
       <button id="turn" hidden title="Döndürmek için sürükle" aria-label="Malzemeyi döndür">⟳</button>
-      <button id="piece-action" hidden>Kaldır</button>
+      <div id="edit-actions" role="group" aria-label="Düzenleme" hidden>
+        <button id="undo-action" type="button" disabled>Geri al</button>
+        <button id="piece-action" type="button" hidden>Kaldır</button>
+      </div>
       <div id="cloths" role="group" aria-label="Sofra bezi"></div>
       <div id="knife" aria-hidden="true" hidden><img id="utensil" alt="" src="./assets/knife.webp"><img id="knife-load" alt="" hidden></div>
       <button id="put-down" type="button" hidden><span></span><b aria-hidden="true">×</b></button>
@@ -51,6 +65,6 @@
     </footer>
   </main>
   <dialog id="sheet"><div id="sheet-content"></div></dialog>
-  <script type="module" src="simit.js?v=servings"></script>
+  <script type="module" src="simit.js?v=playback-history"></script>
 </body>
 </html>

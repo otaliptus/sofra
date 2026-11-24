@@ -23,12 +23,21 @@ nav { display: flex; align-items: center; justify-content: space-between; width:
 #nav-left { display: flex; gap: clamp(14px,2.8vw,38px); }
 nav button,.rail-end,#views button { text-decoration: underline; text-underline-offset: .24em; text-decoration-color: #83796985; padding: 5px 0; }
 nav button:hover,.rail-end:hover,#views button:hover { color: white; }
-#radio { display:flex; align-items:center; flex:none; background:#30271e; border:1px solid #655541; border-radius:20px; color:#f3e6cd; }
-#radio button { display:grid; place-items:center; width:38px; height:34px; padding:0; border-radius:50%; text-decoration:none; }
-#radio button:hover { background:#494033; }
-#music-play span { width:0; height:0; border-style:solid; border-width:6px 0 6px 9px; border-color:transparent transparent transparent currentColor; }
-#music-play[data-playing="true"] span { width:10px; height:10px; border:0; border-radius:1px; background:currentColor; }
-#track-name { font-size:12px; white-space:nowrap; max-width:20ch; overflow:hidden; text-overflow:ellipsis; }
+#radio { position:relative; flex:none; }
+#radio button { display:grid; place-items:center; width:38px; height:38px; padding:0; border-radius:50%; text-decoration:none; }
+#radio button:hover,#music-toggle[aria-expanded="true"] { background:#494033; }
+#music-toggle { border:1px solid #76634e; background:#30271e; color:#f3e6cd; }
+#music-toggle svg { width:19px; height:19px; }
+#music-panel { position:absolute; z-index:4; top:calc(100% + 6px); left:50%; transform:translateX(-50%); width:260px; max-width:calc(100vw - 16px); padding:12px 14px 10px; border:1px solid #806f55; border-radius:14px; background:#282019; box-shadow:0 6px 18px #160d0855; color:#f7e9cf; }
+.now-playing,.transport { display:flex; align-items:center; justify-content:space-between; gap:4px; }
+#track-name { font-size:14px; }
+#music-time { display:block; margin-top:5px; text-align:center; color:#cbbda3; font-size:11px; font-variant-numeric:tabular-nums; }
+#radio #audio {width:32px;height:32px;}
+#music-play { background:#f0dbb9; color:#30241a; }
+#radio #music-play:hover { background:#fff0cf; color:#30241a; }
+#music-play span {width:0;height:0;border-style:solid;border-width:6px 0 6px 9px;border-color:transparent transparent transparent currentColor;}
+#music-play[data-playing="true"] span {width:10px;height:12px;border:solid currentColor;border-width:0 3px;}
+#music-rewind,#music-forward {font-size:13px;}
 #audio svg { width:18px; height:18px; }
 #audio .silence,#audio[data-muted="true"] .waves { display:none; }
 #audio[data-muted="true"] .silence { display:inline; }
@@ -36,8 +45,8 @@ nav button:hover,.rail-end:hover,#views button:hover { color: white; }
 .music-credits { margin-top:14px; font-size:14px; }
 .music-credits summary { cursor:pointer; }
 .music-credits a { text-underline-offset:2px; }
-@media(max-width:700px){#track-name{display:none;}#radio button{width:32px;}}
-@media(max-height:440px){#radio button{height:26px;}}
+@media(max-width:700px){nav{position:relative;}#radio{position:static;}#music-panel{top:calc(100% + 3px);}}
+@media(max-height:440px){#radio #music-toggle{width:28px;height:28px;}}
 #stage { min-height: 0; position: relative; background: #463b35 var(--cloth-image) center/auto 95%; overflow: hidden; isolation: isolate; touch-action: none; }
 #cloths { position:absolute; z-index:2; bottom:12px; left:12px; display:flex; gap:2px; padding:2px; border:1px solid #cfbd9c; border-radius:24px; background:#28231e; }
 #cloths button { display:flex; align-items:center; justify-content:center; gap:6px; min-height:40px; padding:0 11px; border-radius:22px; color:#e8dece; font-size:13px; }
@@ -49,10 +58,17 @@ nav button:hover,.rail-end:hover,#views button:hover { color: white; }
 #photo-cover { font:inherit; color:#fff3dd; background:#30251c; border:1px solid #74644d; border-radius:5px; padding:6px 8px; min-height:32px; cursor:pointer; }
 #photo-cover:focus-visible { outline:2px solid #ffc86a; }
 @media(max-height:440px){#photo-cover{min-height:24px;padding:1px 4px;}}
-#piece-action { position:absolute; right:12px; bottom:12px; z-index:2; display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:44px; padding:7px 14px; background:#28231e; border:1px solid #eaddc9; border-radius:24px; color:#fff4e3; font:inherit; font-size:14px; box-shadow:0 2px 8px #21170b33; }
-#piece-action::before { content:'×'; font:22px/1 Arial,sans-serif; }
-#piece-action[data-action="undo"]::before { content:'↶'; }
-#piece-action:hover { background:#45382e; }
+#edit-actions {position:absolute;bottom:12px;right:12px;z-index:2;display:flex;align-items:flex-end;gap:5px;}
+#edit-actions button {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:6px 12px;background:#28231e;border:1px solid #cfbd9c;border-radius:22px;color:#fff4e3;font-size:13px;box-shadow:0 2px 8px #21170b33;}
+#edit-actions button:hover {background:#45382e;}
+#piece-action::before {content:'×';font:20px/1 Arial,sans-serif;}
+#undo-action::before {content:'↶';font:19px/1 Arial,sans-serif;}
+#undo-action:disabled {opacity:.55;}
+.remove-choices {display:grid;gap:6px;margin-top:12px;}
+.remove-choices button {text-align:left;padding:10px 12px;border:1px solid #74614c;border-radius:5px;}
+.remove-choices button:hover {background:#392a1c;}
+.remove-choices small {color:#d3c3a9;font-size:12px;}
+@media(max-width:460px){#edit-actions{flex-direction:column-reverse;right:7px;bottom:10px;}#edit-actions button{padding:6px 10px;}}
 #scene { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; }
 #scene[data-cursor="move"] { cursor: grab; }
 #scene[data-cursor="held"] { cursor: grabbing; }
@@ -121,7 +137,7 @@ dialog p,dialog li {font-size:14px;font-weight:400;line-height:1.5;} dialog ul {
 @media(max-width:440px){nav:has(#lid:not([hidden])){font-size:12px;}nav:has(#lid:not([hidden])) #nav-left{gap:8px;}}
 @media(max-width:410px) {
   header { padding-inline:8px; }
-  #radio button { width:34px; }
+  #radio #music-toggle { width:32px;height:32px; }
   #cover-control span { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   #game:not(.camera):has(#lid:not([hidden])) { grid-template-rows:72px minmax(0,1fr) auto; }
   nav:has(#lid:not([hidden])) { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:1fr 1fr; justify-items:center; font-size:13px; }
@@ -132,7 +148,7 @@ dialog p,dialog li {font-size:14px;font-weight:400;line-height:1.5;} dialog ul {
 #utensil {display:block;width:100%;height:auto;}
 #knife-load {position:absolute;left:1%;top:12%;width:32%;height:75%;object-fit:contain;}
 
-#radio .track-step { width:28px; }
+#radio .track-step { width:38px; }
 .track-step span { width:11px; height:10px; position:relative; border-right:2px solid currentColor; }
 .track-step span::before { content:""; position:absolute; left:0; top:0; border:5px solid transparent; border-left:8px solid currentColor; border-right:0; }
 .track-step.previous span { transform:rotate(180deg); }
@@ -147,12 +163,6 @@ dialog p,dialog li {font-size:14px;font-weight:400;line-height:1.5;} dialog ul {
   #put-down:not([hidden]) ~ #coach { top:44px; }
 }
 @media(max-width:410px) {
-  #radio button,#radio .track-step { width:26px; }
-  #game:not(.camera) {grid-template-rows:72px minmax(0,1fr) auto;}
-  #game:not(.camera) nav {display:grid;grid-template-columns:1fr 1fr auto;grid-template-rows:1fr 1fr;justify-items:center;font-size:13px;}
-  #game:not(.camera) #nav-left {display:contents;}
-  #game:not(.camera) #radio {grid-column:3;grid-row:1;}
-  #game:not(.camera) nav:has(#lid[hidden]) #album {grid-column:1 / 3;}
   .camera nav {font-size:12px;gap:3px;}
   .camera #photo-cover {width:min(28vw,104px);font-size:12px;padding-inline:3px;}
 }

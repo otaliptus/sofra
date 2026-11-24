@@ -1,4 +1,5 @@
-import { mountMusic, musicCredits } from './music.js?v=servings';
+import { editHistory } from './undo-history.js';
+import { mountMusic, musicCredits } from './music.js?v=playback-history';
 import { createBoard, cameraNames } from './board-3d.js?v=servings';
 import { mountShelf } from './shelf.js?v=servings';
 import { breads, cloths, ingredients, pantry, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=servings';
@@ -7,20 +8,26 @@ import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
 const $=selector=>document.querySelector(selector);
 const canvas=$('#scene'),stage=$('#stage'),sheet=$('#sheet'),turn=$('#turn'),knife=$('#knife');
-const pieceAction=$('#piece-action');
+const pieceAction=$('#piece-action'),undoAction=$('#undo-action');
+const breadSelection=-2;
 const coverSelect=$('#photo-cover');
 for(const [id,name] of Object.entries(photoCovers))coverSelect.add(new Option(name,id));
 const storeKey='sofra.simit.workbench.v2';
 function read(key){try{return localStorage.getItem(key)}catch{return null}}
-function write(key,value){try{localStorage.setItem(key,value)}catch{/* Storage may be disabled. */}}
-function draft(){try{return readRecipe(JSON.parse(read(storeKey)))}catch{return null}}
-const shared=recipeFromHash(location.hash);
-let recipe=shared||draft()||emptyRecipe();
+function write(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}}
+function draft(){try{return JSON.parse(read(storeKey));}catch{return null;}}
+const shared=recipeFromHash(location.hash),stored=shared?null:draft(),savedRecipe=readRecipe(stored);
+let recipe=shared||savedRecipe||emptyRecipe();
+function selectionFor(index){
+  if(index===breadSelection && recipe.strokes.length)return breadSelection;
+  return Number.isInteger(index)&&recipe.pieces[index]?index:-1;
+}
+let board,selected=selectionFor(stored?.editSelection),brush=null,gesture=null,mode='edit',angle='tilt',snapshot=null;
+const historyStack=editHistory(savedRecipe&&stored?.editHistory);
 if(shared){write(storeKey,JSON.stringify(recipe));history.replaceState(null,'',location.pathname+location.search);}
-let board,selected=-1,brush=null,gesture=null,mode='edit',angle='tilt',snapshot=null;
 const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
 let audioContext,noticeTimer,teaFrame=0,albumDB;
-const historyStack=[];
+let wheelTurn=null;
 for(const [id,cloth] of Object.entries(cloths)){
   const button=document.createElement('button');
   button.type='button';button.textContent=cloth.name;button.dataset.cloth=id;
@@ -40,8 +47,21 @@ function showCloth(){
   }
 }
 showCloth();
-function save(){write(storeKey,JSON.stringify(recipe));}
-function checkpoint(){historyStack.push(JSON.stringify(recipe));if(historyStack.length>35)historyStack.shift();}
+function save(){
+  // Store the draft and its history together. Under storage pressure keep the
+  // newest steps first, and always give the breakfast itself priority.
+  for(const budget of [1200000,180000,0]){
+    if(write(storeKey,JSON.stringify({...recipe,editSelection:selected,editHistory:historyStack.pack(budget)})))return;
+  }
+}
+function checkpoint(state=JSON.stringify(recipe),selection=selected){
+  wheelTurn=null;historyStack.push(state,selection);
+}
+function checkpointWheel(target){
+  const now=performance.now();
+  if(wheelTurn?.target!==target||now-wheelTurn.time>350)checkpoint();
+  wheelTurn={target,time:now};
+}
 function hint(message,duration=2600){
   clearTimeout(noticeTimer);const node=$('#coach');node.textContent=message;node.hidden=!message;
   if(message&&duration)noticeTimer=setTimeout(()=>node.hidden=true,duration);
@@ -52,18 +72,24 @@ function showHandle(){
   turn.hidden=!p||Boolean(gesture&&!['cover-turn','turn'].includes(gesture.kind));
   turn.setAttribute('aria-label',photo?'Üst parçayı döndür':'Malzemeyi döndür');
   if(!turn.hidden){turn.style.left=p.x+'px';turn.style.top=p.y+'px';}
-  pieceAction.hidden=!editing||(!p&&!historyStack.length);
-  pieceAction.dataset.action=p?'remove':'undo';
-  pieceAction.textContent=p?'Kaldır':'Geri al';
-  if(editing)pieceAction.setAttribute('aria-label',p?pantry[recipe.pieces[selected].food].name+' · Kaldır':'Geri al');
+  const markedBread=selected===breadSelection&&recipe.strokes.length>0;
+  pieceAction.hidden=!editing||recipe.closed||(!p&&!markedBread);
+  if(!pieceAction.hidden)pieceAction.setAttribute('aria-label',(markedBread?breads[recipe.bread].name:pantry[recipe.pieces[selected].food].name)+' · Kaldır');
+  undoAction.disabled=!historyStack.length;
+  undoAction.title='Geri al · '+historyStack.length+' adım';
+  $('#edit-actions').hidden=!editing||(pieceAction.hidden&&undoAction.disabled);
 }
 function showCoverChoice(){
   const custom=coverSelect.querySelector('[value="custom"]');
   custom.hidden=custom.disabled=!recipe.photoCoverPose;
   coverSelect.value=photoCoverFor(recipe);
 }
-function keepCover(){
-  recipe.photoCoverPose=boundedCoverPose(board.coverPose());recipe.photoCover='custom';
+function keepCover(fromWheel=false){
+  const pose=boundedCoverPose(board.coverPose());
+  if(recipe.photoCover!=='custom'||JSON.stringify(recipe.photoCoverPose)!==JSON.stringify(pose)){
+    if(fromWheel)checkpointWheel('cover');else checkpoint();
+  }
+  recipe.photoCoverPose=pose;recipe.photoCover='custom';
   showCoverChoice();showHandle();save();
 }
 function coverHint(){
@@ -76,22 +102,49 @@ function lidButton(){
   button.textContent=recipe.closed?'Sandviçi aç':'Sandviçi kapat';button.setAttribute('aria-pressed',String(!!recipe.closed));
 }
 $('#lid').onclick=()=>{checkpoint();recipe.closed=!recipe.closed;delete recipe.photoCover;selected=-1;chooseBrush(null);update();};
-function update(settle=false){
-  board.sync(recipe,settle);lidButton();showCloth();showHandle();save();
+function update(settle=false,focusPiece){
+  board.sync(recipe,settle);if(focusPiece)selected=recipe.pieces.indexOf(focusPiece);
+  lidButton();showCloth();showHandle();save();
   describeCanvas();
 }
 function undo(){
-  if(!historyStack.length)return;
-  recipe=JSON.parse(historyStack.pop());selected=-1;chooseBrush(null);update();
+  if(gesture)return;
+  let entry,previous;
+  while(!previous&&(entry=historyStack.pop())){
+    try{previous=readRecipe(JSON.parse(entry.state));}catch{/* Ignore an unreadable saved checkpoint. */}
+  }
+  if(!previous){showHandle();return;}
+  wheelTurn=null;recipe=previous;selected=selectionFor(entry.selected);chooseBrush(null);update();
+  if(mode==='camera'){board.refreshCover();showCoverChoice();showHandle();}
 }
 function removeSelected(){
   if(selected<0||!recipe.pieces[selected]||mode!=='edit'||recipe.closed)return;
-  checkpoint();recipe.pieces.splice(selected,1);selected=-1;update(true);
+  checkpoint();recipe.pieces.splice(selected,1);selected=-1;chooseBrush(null);update(true);
 }
-pieceAction.onclick=()=>{
-  if(selected>=0)removeSelected();else undo();
-  canvas.focus({preventScroll:true});
-};
+function removalChoices(){
+  if(gesture||recipe.closed||mode!=='edit')return;
+  const piece=recipe.pieces[selected],marks=selected===breadSelection?recipe.strokes:piece?.marks;
+  if(!marks?.length){removeSelected();canvas.focus({preventScroll:true});return;}
+  const foods=[...new Set(marks.map(mark=>mark.food).reverse())];
+  const buttons=foods.map(food=>{
+    const count=marks.filter(mark=>mark.food===food).length;
+    const detail=count>1?' <small>(son kat)</small>':'';
+    return '<button data-remove-mark="'+food+'">'+pantry[food].name+detail+'</button>';
+  }).join('');
+  const whole=piece?'<button id="remove-whole">'+pantry[piece.food].name+' <small>(tamamı)</small></button>':'';
+  dialog('Ne kaldırılsın?','<div class="remove-choices">'+buttons+whole+'</div>');
+  for(const button of sheet.querySelectorAll('[data-remove-mark]')){
+    button.onclick=()=>{
+      checkpoint();const i=marks.findLastIndex(mark=>mark.food===button.dataset.removeMark);
+      marks.splice(i,1);
+      if(!marks.length){if(piece)delete piece.marks;else selected=-1;}
+      sheet.close();chooseBrush(null);update();canvas.focus({preventScroll:true});
+    };
+  }
+  if(piece)$('#remove-whole').onclick=()=>{sheet.close();removeSelected();canvas.focus({preventScroll:true});};
+}
+pieceAction.onclick=removalChoices;
+undoAction.onclick=()=>{undo();canvas.focus({preventScroll:true});};
 function clink(kind){
   if(music.muted)return;
   try{
@@ -134,7 +187,7 @@ function releasePiece(p,previous=-1){
   checkpoint();if(previous>=0)recipe.pieces.splice(previous,1);
   if(support.stable){
     p.x=round(p.x);p.z=round(p.z);p.a=round(p.a);
-    recipe.pieces.push(p);update(previous>=0);selected=recipe.pieces.indexOf(p);showHandle();if(selected>=0)board.land(p);clink(p.food);hint('');
+    recipe.pieces.push(p);update(previous>=0,p);if(selected>=0)board.land(p);clink(p.food);hint('');
   }else{selected=-1;update(true);board.slip(p);clink('drop');}
 }
 function pickFood(id,x,z){
@@ -182,7 +235,7 @@ function newMark(hit){
 function markPoint(hit){return [Math.round(clamp(hit.u,0,1)*1024),Math.round(clamp(hit.v,0,1)*1024)];}
 function placeServing(hit){
   if(countMarks()>=200){hint('Tabak dolu.');return;}
-  checkpoint();newMark(hit).line.push(markPoint(hit));update();clink('spread');hint('');
+  selected=hit.i<0?breadSelection:hit.i;checkpoint();newMark(hit).line.push(markPoint(hit));update();clink('spread');hint('');
 }
 let paintFrame=0;
 function refreshInk(){
@@ -196,7 +249,7 @@ function inkPoint(hit){
     if(countMarks()>=200)return;
     gesture.stroke=newMark(hit);
   }
-  gesture.stroke.line.push(markPoint(hit));gesture.last=hit;refreshInk();
+  gesture.stroke.line.push(markPoint(hit));gesture.last=hit;gesture.surface=hit.i<0?breadSelection:hit.i;refreshInk();
 }
 function growBead(g){
   if(gesture!==g||g.moved||!g.stroke)return;
@@ -228,11 +281,11 @@ function begin(e){
   }
   if(brush){
     if(!edible(hit)||countMarks()>=200){hint(edible(hit)?'Tabak dolu.':'Ekmeğe veya bir malzemeye dokun.');return;}
-    checkpoint();gesture={kind:'ink',id:e.pointerId,stroke:null,last:null,px:e.clientX,py:e.clientY,start:performance.now(),moved:false};
+    gesture={kind:'ink',before:JSON.stringify(recipe),id:e.pointerId,stroke:null,last:null,px:e.clientX,py:e.clientY,start:performance.now(),moved:false};
     moveKnife(e);inkPoint(hit);if(pantry[brush].kind==='sauce')growBead(gesture);
     clink('spread');hint('');return;
   }
-  if(!hit||hit.i<0){selected=-1;showHandle();return;}
+  if(!hit||hit.i<0){selected=hit&&recipe.strokes.length?breadSelection:-1;showHandle();return;}
   chooseBrush(null);selected=hit.i;const p=recipe.pieces[selected];
   gesture={kind:'piece',id:e.pointerId,i:selected,from:{...p},px:e.clientX,py:e.clientY,lastX:e.clientX,
     y:hit.y,dx:p.x-hit.x,dz:p.z-hit.z,moved:false};
@@ -285,7 +338,8 @@ function ended(e){
   if(g.kind==='orbit'&&!g.moved&&e.type==='pointerup'&&mode==='edit'){chooseBrush(null);selected=-1;}
   if(g.kind==='ink'){
     cancelAnimationFrame(g.holdFrame);cancelAnimationFrame(paintFrame);paintFrame=0;
-    if(e.type!=='pointerup')recipe=JSON.parse(historyStack.pop());
+    if(e.type==='pointerup'){checkpoint(g.before,g.surface);selected=g.surface;}
+    else recipe=JSON.parse(g.before);
     update();
     if(e.pointerType==='touch')knife.hidden=true;
   }else if(g.kind==='piece'){
@@ -311,9 +365,9 @@ function coverAngle(e,pose,height){
   if(!q||Math.hypot(q.x-pose.x,q.z-pose.z)<.015)return null;
   return Math.atan2(q.z-pose.z,q.x-pose.x);
 }
-function twistCover(delta){
+function twistCover(delta,fromWheel=false){
   const pose=board.coverPose();if(!pose)return;
-  board.adjustCover({...pose,yaw:pose.yaw+delta});keepCover();hint('');
+  board.adjustCover({...pose,yaw:pose.yaw+delta});keepCover(fromWheel);hint('');
 }
 turn.onpointerdown=e=>{
   if(gesture||e.button!==0)return;
@@ -347,11 +401,11 @@ turn.onpointerup=turn.onpointercancel=e=>{
   }
   if(gesture?.kind!=='turn'||e.pointerId!==gesture.id)return;
   const g=gesture;gesture=null;
-  if(e.type==='pointercancel')recipe.pieces[selected].a=g.a;
-  else{if(Math.abs(recipe.pieces[selected].a-g.a)<.01)recipe.pieces[selected].a+=Math.PI/12;recipe.pieces[selected].a=round(recipe.pieces[selected].a%(Math.PI*2));historyStack.push(g.old);}
+  if(e.type!=='pointerup')recipe.pieces[selected].a=g.a;
+  else{if(Math.abs(recipe.pieces[selected].a-g.a)<.01)recipe.pieces[selected].a+=Math.PI/12;recipe.pieces[selected].a=round(recipe.pieces[selected].a%(Math.PI*2));checkpoint(g.old);}
   update();
 };
-turn.onlostpointercapture=e=>{if(gesture?.kind==='cover-turn')turn.onpointercancel(e);};
+turn.onlostpointercapture=e=>{if(gesture?.kind==='cover-turn'||gesture?.kind==='turn')turn.onpointercancel(e);};
 turn.onclick=e=>{
   if(mode==='camera'){if(e.detail===0)twistCover(Math.PI/12);return;}
   if(e.detail!==0||selected<0)return;
@@ -363,12 +417,14 @@ canvas.addEventListener('wheel',e=>{
     if(!e.ctrlKey&&e.deltaY&&board.pickCover(e.clientX,e.clientY)){
       e.preventDefault();
       const pixels=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?canvas.clientHeight:1);
-      twistCover(clamp(pixels*.002,-Math.PI/8,Math.PI/8));
+      twistCover(clamp(pixels*.002,-Math.PI/8,Math.PI/8),true);
     }
     return;
   }
   const i=board.pick(e.clientX,e.clientY)?.i??-1;if(i<0||recipe.closed)return;
-  e.preventDefault();checkpoint();selected=i;recipe.pieces[i].a=round((recipe.pieces[i].a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
+  if(!e.deltaY)return;
+  e.preventDefault();selected=i;const piece=recipe.pieces[i];checkpointWheel(piece);
+  piece.a=round((piece.a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
 },{passive:false});
 function dialog(title,html){
   $('#sheet-content').innerHTML='<div class="dialog-head"><h2 id="dialog-title">'+title+'</h2><button class="close" aria-label="Kapat">×</button></div>'+html;
@@ -377,7 +433,7 @@ function dialog(title,html){
 }
 sheet.addEventListener('close',()=>{cancelAnimationFrame(teaFrame);});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
-$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Geri almak için Ctrl/⌘ Z.</p>'+musicCredits());
+$('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
   checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
   if(random){
@@ -393,12 +449,13 @@ function startBreakfast(id,cloth,random=false){
   board.resetOrbit();update();hint(random?'':'Bir malzeme seç.');
 }
 $('#grand-reset').onclick=()=>{
-  if(!board)return;
-  gesture=null;board.lift(null);resetShelf();angle='tilt';
+  if(!board||gesture)return;
+  board.lift(null);resetShelf();angle='tilt';
   startBreakfast('simit','kareli');
   canvas.focus({preventScroll:true});
 };
 $('#fresh').onclick=()=>{
+  if(gesture)return;
   const options=Object.entries(breads).map(([id,b])=>'<button data-bread="'+id+'" '+(id==='simit'?'id="plain"':'')+'><img alt="" src="./assets/'+b.asset+'.webp"><span>'+b.name+'</span></button>').join('');
   dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons"><button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
   $('#undo').disabled=!historyStack.length;$('#undo').onclick=()=>{undo();sheet.close();};
@@ -440,7 +497,7 @@ function leaveCamera(){
 coverSelect.onchange=()=>{
   if(mode!=='camera'||!Object.hasOwn(photoCovers,coverSelect.value))return;
   if(gesture){showCoverChoice();return;}
-  recipe.photoCover=coverSelect.value;board.refreshCover();showHandle();save();coverHint();
+  checkpoint();recipe.photoCover=coverSelect.value;board.refreshCover();showHandle();save();coverHint();
 };
 for(const [id,name] of Object.entries(cameraNames)){
   const btn=document.createElement('button');btn.dataset.angle=id;btn.textContent=name;btn.onclick=()=>camera(id);$('#views').append(btn);
@@ -485,7 +542,8 @@ $('#album').onclick=async()=>{
   if(read('sofra.table.v1') && gallery.isConnected){const p=document.createElement('p'),a=document.createElement('a');a.href='./table.html';a.textContent='Önceki kahvaltı masam';p.append(a);$('#sheet-content').append(p);}
 };
 document.addEventListener('keydown',e=>{
-  if(sheet.open||!board||gesture||e.target===coverSelect)return;
+  if(sheet.open||!board||gesture||e.target===coverSelect||e.target.closest?.('#radio'))return;
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return;}
   if(e.key==='Escape'){if(mode==='camera')leaveCamera();else{chooseBrush(null);selected=-1;showHandle();}return;}
   if(mode==='camera'){
     const dirs={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-16],ArrowDown:[0,16]};
@@ -502,10 +560,9 @@ document.addEventListener('keydown',e=>{
     return;
   }
 
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return;}
   if(e.target!==canvas||recipe.closed)return;
   const n=recipe.pieces.length;
-  if(e.key==='['||e.key===']'){selected=n?((selected<0&&e.key==='['?0:selected)+(e.key==='['?-1:1)+n)%n:-1;chooseBrush(null);showHandle();return;}
+  if(e.key==='['||e.key===']'){const step=e.key==='['?-1:1;selected=n?(selected<0?(step<0?n-1:0):(selected+step+n)%n):-1;chooseBrush(null);showHandle();return;}
   if(brush&&['Enter',' '].includes(e.key)){
     e.preventDefault();const {x,z}=board.landingSpot(recipe.strokes.length);placeServing(board.breadUV(x,z));return;
   }
