@@ -31,11 +31,11 @@ function readLocal(key) { try{return localStorage.getItem(key);}catch{return nul
 function writeLocal(key,value) { try{localStorage.setItem(key,value);}catch{/* A private session can still play. */} }
 function restore() { try{return readTable(JSON.parse(readLocal(storageKey)));}catch{return null;} }
 const shared=decodeTable(location.hash);
-let table=shared || restore() || starter();
+let table=restore() || starter();
 let selected=-1, sound=readLocal('sofra.sound')==='on', audio;
 let drag=null, ready=false, view='table', pour=null, animationId=0;
 const undoStack=[];
-if(shared){writeLocal(storageKey,JSON.stringify(table));history.replaceState(null,'',location.pathname+location.search);}
+if(shared)history.replaceState(null,'',location.pathname+location.search);
 const save=()=>writeLocal(storageKey,JSON.stringify(table));
 let noticeTimer;
 function notify(text) {
@@ -281,3 +281,10 @@ window.advanceTime=ms=>{advance(ms);paint();};
 decorate();soundLabel();refresh();new ResizeObserver(sizeCanvas).observe(board);
 $('#photo').disabled=true;
 try{await loadArt();ready=true;sizeCanvas();$('#photo').disabled=false;}catch{notify('The food artwork could not load. Reload to try again.');}
+
+if(ready&&shared){
+  modal('shared','Shared breakfast','<canvas id="shared-table" width="480" height="360" style="max-width:100%"></canvas><div class="choice"><button class="secondary" id="stay">Keep my table</button><button class="primary" id="import-table">Use this breakfast</button></div>');
+  drawTable($('#shared-table').getContext('2d'),480,360,shared);
+  $('#stay').onclick=()=>dialog.close();
+  $('#import-table').onclick=()=>{change(()=>{table=shared;selected=-1;});dialog.close();};
+}

@@ -3,12 +3,14 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "start": "python3 -m http.server 4173 --bind 127.0.0.1"
+    "start": "wrangler dev --local",
+    "prestart": "wrangler d1 migrations apply sofra-pano --local"
   },
   "dependencies": {
     "three": "0.187.0"
   },
   "devDependencies": {
-    "esbuild": "0.27.3"
+    "esbuild": "0.28.2",
+    "wrangler": "4.168.0"
   }
 }

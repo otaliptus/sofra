@@ -3,7 +3,46 @@
   "compatibility_date": "2026-11-24",
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [{ "pattern": "sofra.otaliptus.com", "custom_domain": true }],
-  "build": { "command": "npm run build" },
-  "assets": { "directory": "./dist" }
+  "routes": [
+    {
+      "pattern": "sofra.otaliptus.com",
+      "custom_domain": true
+    }
+  ],
+  "build": {
+    "command": "npm run build"
+  },
+  "assets": {
+    "directory": "./dist",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "main": "worker/index.js",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sofra-pano",
+      "database_id": "bd80f1c9-81d6-4b5d-a40f-0a100fc99acb"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "BOARD_WRITES",
+      "namespace_id": "742961",
+      "simple": {
+        "limit": 18,
+        "period": 60
+      }
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "16 1 * * *"
+    ]
+  },
+  "dev": {
+    "ip": "127.0.0.1",
+    "port": 4173
+  }
 }

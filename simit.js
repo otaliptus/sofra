@@ -1,3 +1,4 @@
+import { boardWrite, publicURL } from './pano-api.js';
 import { assetURL } from './asset-url.js';
 import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
 import { editHistory } from './undo-history.js';
@@ -20,8 +21,8 @@ const storeKey='sofra.simit.workbench.v2';
 function read(key){try{return localStorage.getItem(key)}catch{return null}}
 function write(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}}
 function draft(){try{return JSON.parse(read(storeKey));}catch{return null;}}
-const shared=recipeFromHash(location.hash),stored=shared?null:draft(),savedRecipe=readRecipe(stored);
-let recipe=shared||savedRecipe||emptyRecipe();
+const shared=recipeFromHash(location.hash),stored=draft(),savedRecipe=readRecipe(stored);
+let recipe=savedRecipe||emptyRecipe();
 function selectionFor(index){
   if(index===coverSelection&&!recipe.coverRemoved)return coverSelection;
   if(index===breadSelection && !recipe.baseRemoved)return breadSelection;
@@ -29,7 +30,7 @@ function selectionFor(index){
 }
 let board,selected=selectionFor(stored?.editSelection),brush=null,gesture=null,mode='edit',angle='tilt',snapshot=null;
 const historyStack=editHistory(savedRecipe&&stored?.editHistory);
-if(shared){write(storeKey,JSON.stringify(recipe));history.replaceState(null,'',location.pathname+location.search);}
+if(shared)history.replaceState(null,'',location.pathname+location.search);
 const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
 let audioContext,noticeTimer,teaFrame=0,drinkService=null,albumDB;
 let wheelTurn=null;
@@ -638,8 +639,9 @@ function toBlob(canvas,type,quality){return new Promise((res,rej)=>canvas.toBlob
 function fetchAlbum(action,record){albumDB ||= photoStore();return albumDB(action,record);}
 function photoPreview(record,fromAlbum=false){
   if(snapshot)URL.revokeObjectURL(snapshot);snapshot=URL.createObjectURL(record.blob);
-  dialog(record.id?'Sofra № '+record.id:'Fotoğraf','<img class="print" alt="Simit fotoğrafı"><div class="buttons">'+(fromAlbum?'<button id="remix" class="primary">Sofraya ekle</button>':'<button id="keep" class="primary">Sakla</button>')+'<a id="png" download="sofra.png">İndir</a><button id="share">Bağlantı</button></div><p class="feedback" role="status"></p>');
+  dialog(record.id?'Sofra № '+record.id:'Fotoğraf','<img class="print" alt="Simit fotoğrafı"><div class="buttons">'+(fromAlbum?'<button id="remix" class="primary">Sofraya ekle</button>':'<button id="keep" class="primary">Sakla</button>')+'<a id="png" download="sofra.png">İndir</a><button id="share">Bağlantı</button><button id="hang">Panoya as</button></div><p class="feedback" role="status"></p>');
   $('.print').src=snapshot;$('#png').href=snapshot;
+  $('#hang').onclick=()=>publishPhoto(record,fromAlbum);
   if(!fromAlbum)$('#keep').onclick=async()=>{
     const button=$('#keep');button.disabled=true;
     try{record.id=await fetchAlbum('keep',record);photoPreview(record,true);}
@@ -652,10 +654,31 @@ function photoPreview(record,fromAlbum=false){
     catch{const input=document.createElement('input');input.readOnly=true;input.value=link;$('.feedback').replaceChildren(input);input.select();}
   };
 }
+function publishPhoto(record,fromAlbum){
+  dialog('Panoya as','<form id="hang-form"><img class="print" alt="Asılacak sofra"><label>Tarif adı<input id="hang-title" maxlength="48" required autocomplete="off"></label><p>Tarifin herkese açık olur. Diğer oyuncular oy verebilir ve bir kopyasını hazırlayabilir.</p><div class="buttons"><button type="submit" class="primary">Panoya as</button><button type="button" id="hang-back">Geri</button></div><p class="feedback" role="status"></p></form>');
+  $('.print').src=snapshot;
+  const form=$('#hang-form'),name=$('#hang-title'),submit=form.querySelector('[type=submit]'),feedback=form.querySelector('.feedback');
+  name.value=record.recipe.baseRemoved?'Kahvaltı tabağım':breads[record.recipe.bread||'simit'].name+' sofram';
+  $('#hang-back').onclick=()=>photoPreview(record,fromAlbum);
+  form.onsubmit=async event=>{
+    event.preventDefault();if(submit.disabled)return;
+    submit.disabled=true;feedback.textContent='Asılıyor…';
+    try{
+      const {recipe,angle,pose,frame}=record;
+      const result=await boardWrite('',{title:name.value,recipe,angle,pose,frame});
+      if(!form.isConnected||!sheet.open)return;
+      dialog(result.created?'Tarifin panoda':'Bu tarif zaten panoda','<div class="buttons"><a id="see-post" class="primary">Panoda gör</a><button id="copy-post">Bağlantıyı kopyala</button><button id="copy-removal">Özel kaldırma bağlantısı</button></div><p class="feedback" role="status"></p>');
+      const url=publicURL(result.id);$('#see-post').href=url;
+      function copy(link,message){return async()=>{try{await navigator.clipboard.writeText(link);$('.feedback').textContent=message;}catch{$('.feedback').textContent=link;}};}
+      $('#copy-post').onclick=copy(url,'Bağlantı kopyalandı.');
+      $('#copy-removal').onclick=copy(url+'#kaldir='+result.removeKey,'Özel bağlantı kopyalandı. Bu bağlantıyı sakla; yalnızca tarifi kaldırmak için kullanılır.');
+    }catch(error){feedback.textContent=error.message;submit.disabled=false;}
+  };
+}
 $('#shutter').onclick=async()=>{
   if(!board||gesture)return;
   if(mode==='edit'){camera(board.hasEditPose()?'free':'tilt');return;}
-  const output=board.capture(),record={recipe:structuredClone(recipe),angle,pose:board.pose(),date:Date.now()};
+  const output=board.capture(),record={recipe:structuredClone(recipe),angle,pose:board.pose(),frame:board.frame(),date:Date.now()};
   record.blob=await toBlob(output,'image/png');const thumb=document.createElement('canvas');thumb.width=thumb.height=128;thumb.getContext('2d').drawImage(output,0,0,128,128);record.thumb=thumb.toDataURL('image/webp',.72);
   if(mode==='camera')photoPreview(record);
 };
@@ -720,4 +743,12 @@ window.advanceTime=ms=>board?.step(ms);
 try{
   board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
   hint(recipe.coverRemoved||recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
+  if(shared){
+    board.sync(shared);board.setView('tilt');
+    const print=board.capture(480);board.setView(null);board.sync(recipe);
+    dialog('Paylaşılan sofra','<div id="shared-print"></div><div class="buttons"><button id="import-recipe" class="primary">Sofraya ekle</button><button id="keep-draft">Soframda kal</button></div>');
+    print.className='print';$('#shared-print').append(print);
+    $('#keep-draft').onclick=()=>sheet.close();
+    $('#import-recipe').onclick=()=>{checkpoint();recipe=shared;selected=-1;sheet.close();update();};
+  }
 }catch(err){console.error(err);hint('Sofra açılamadı. WebGL destekli bir tarayıcıda yenile.',0);}

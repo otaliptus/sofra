@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5efe2"><meta name="description" content="Sofra’da hazırlanan kahvaltılar. Tarifini panoya as, beğendiğin sofraya oy ver.">
+  <link rel="icon" href="data:,"><title>Sofra Panosu</title><link rel="stylesheet" href="./pano.css">
+</head>
+<body>
+  <main>
+    <header><a class="return" href="./">← Sofraya dön</a><h1>Sofra <em>Panosu</em></h1></header>
+    <nav aria-label="Tarifleri sırala">
+      <button data-sort="new" aria-pressed="true">Yeni asılanlar</button>
+      <button data-sort="day" aria-pressed="false">Bugün</button>
+      <button data-sort="week" aria-pressed="false">Bu hafta</button>
+      <button data-sort="all" aria-pressed="false">Tüm zamanlar</button>
+    </nav>
+    <p id="status" role="status">Tarifler yükleniyor…</p>
+    <section id="pins" aria-label="Asılı tarifler"></section>
+    <div id="empty" hidden><span class="empty-pin" aria-hidden="true"></span><img src="./assets/simit-kapak.webp" alt=""><h2></h2><p></p><a href="./">Soframı hazırla ↗</a></div>
+    <button id="more" hidden>Daha fazla göster</button>
+  </main>
+  <dialog id="post"><div class="detail">
+    <button id="close" aria-label="Panoya dön">×</button>
+    <div id="portrait"></div>
+    <div class="caption"><p id="post-date"></p><h2 id="post-title"></h2>
+      <p id="ingredients"></p>
+      <div class="actions"><button id="vote"></button><a id="remix">Sofraya ekle ↗</a></div>
+      <p id="rule">Her tarife günde bir oy. Günler İstanbul saatine göre, haftalar pazartesi başlar.</p>
+      <div class="links"><button id="share">Bağlantıyı kopyala</button><button id="report">Bildir</button><button id="remove" hidden>Panodan kaldır</button></div>
+      <div id="confirm" hidden><p id="confirm-label"></p><button id="confirm-yes">Evet</button> <button id="confirm-no">Vazgeç</button></div>
+      <p id="feedback" role="status"></p>
+    </div>
+  </div></dialog>
+  <div id="studio" aria-hidden="true"><canvas></canvas></div>
+  <script type="module" src="./pano.js"></script>
+</body></html>

@@ -23,10 +23,10 @@ export function starter() {
     ({ ...makeDish(type,x,y), angle, dem:type==='cay'?2:0, water:type==='cay'?3:0 })) };
 }
 export function readTable(value) {
-  if (value?.v !== 1 || !Object.hasOwn(cloths,value.cloth) || !Array.isArray(value.dishes) || value.dishes.length > limit) return null;
+  if (value?.v !== 1 || typeof value.cloth!=='string' || !Object.hasOwn(cloths,value.cloth) || !Array.isArray(value.dishes) || value.dishes.length > limit) return null;
   const dishes = [];
   for (const d of value.dishes) {
-    if (!d || !Object.hasOwn(catalog,d.type) || ![d.x,d.y,d.angle].every(Number.isFinite)) return null;
+    if (!d || typeof d.type!=='string' || !Object.hasOwn(catalog,d.type) || ![d.x,d.y,d.angle].every(Number.isFinite)) return null;
     const tea = n => Number.isInteger(n) ? clamp(n,0,10) : 0;
     const dem = d.type === 'cay' ? tea(d.dem) : 0;
     dishes.push({...makeDish(d.type,clamp(d.x,0,1),clamp(d.y,0,1)),angle:d.angle%(2*Math.PI),

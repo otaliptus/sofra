@@ -1,0 +1,28 @@
+*{box-sizing:border-box} [hidden]{display:none!important}
+:root{color-scheme:light;--ink:#342d23;--red:#9b372d;--paper:#fffaf0;}
+body{margin:0;color:var(--ink);font-family:Georgia,'Times New Roman',serif;background-color:#efe8d6;background-image:repeating-linear-gradient(0deg,#7b643409 0 1px,transparent 1px 4px),repeating-linear-gradient(90deg,#fff9e83b 0 1px,transparent 1px 3px);}
+main{max-width:1140px;margin:auto;padding:30px clamp(16px,5vw,66px) 64px;}
+a,button{color:inherit}button{font:inherit;cursor:pointer}button:disabled{cursor:default}a:focus-visible,button:focus-visible{outline:3px solid #af4b2e;outline-offset:4px}
+header{border-bottom:4px double #655d49;padding-bottom:14px}.return,.links button{font:600 13px system-ui;text-underline-offset:4px}
+h1{font-size:clamp(52px,9vw,98px);letter-spacing:-.064em;line-height:.94;margin:24px 0 4px}h1 em{color:var(--red);font-weight:400}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
+nav button,#more,.actions>*{border:1px solid #a89b83;border-radius:30px;padding:8px 14px;background:transparent;font:600 14px system-ui;text-decoration:none}
+nav button[aria-pressed=true],#vote{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+#status,#feedback,#empty p,#rule,#ingredients{font:14px/1.5 system-ui}#status:empty,#feedback:empty{display:none}
+#pins{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:30px 23px;padding:18px 0 8px}
+.pin{min-width:0;max-width:340px;display:block;color:var(--ink);text-decoration:none;position:relative;background:var(--paper);padding:10px 10px 15px;box-shadow:1px 3px 6px #58472f36;transform:rotate(var(--lean,0deg));transition:transform .15s}.pin:hover,.pin:focus-visible{transform:translateY(-3px) rotate(0)}
+.pin::before,.empty-pin{content:'';display:block;position:absolute;z-index:1;top:-5px;left:49%;width:12px;height:12px;border-radius:100%;background:radial-gradient(circle at 36% 30%,#e3946c,#a64833 48%,#592c21 95%);box-shadow:1px 3px 2px #62462275}
+.picture{position:relative;aspect-ratio:1;overflow:hidden;background:#d9cfb9 center/cover}
+.picture img,.picture canvas{width:100%;height:100%;object-fit:cover;display:block}
+.pin h2{margin:10px 0 5px;font-size:clamp(17px,3vw,22px);line-height:1.12;overflow-wrap:anywhere}
+.meta,#post-date{display:flex;justify-content:space-between;gap:4px;font:12px system-ui;color:#685944}.hearts{color:var(--red);font-weight:bold}
+#empty{background:var(--paper);box-shadow:0 3px 8px #66523432;margin:38px auto 24px;max-width:370px;padding:27px;text-align:center;position:relative;transform:rotate(-1deg)}#empty img{width:100px;height:100px;object-fit:contain}#empty h2{margin:13px 0 2px;font-size:26px}#empty a{color:var(--red);font-weight:bold;text-underline-offset:3px}
+#more{display:block;margin:28px auto}#post{padding:0;border:0;width:min(820px,94vw);max-height:90dvh;background:var(--paper);color:var(--ink);box-shadow:0 12px 64px #21190d60}#post::backdrop{background:#201d17bb}
+.detail{display:grid;grid-template-columns:1.1fr 1fr;align-items:center;position:relative;padding:18px;gap:22px}
+#close{position:absolute;right:7px;top:7px;width:36px;height:36px;background:var(--paper);border:1px solid #ac9e85;border-radius:100%;font-size:23px;z-index:2}
+.caption{padding:14px 8px 10px 0}.caption h2{margin:10px 0;font-size:clamp(25px,5vw,40px);line-height:1.08;overflow-wrap:anywhere}
+.actions,.links{display:flex;gap:9px;flex-wrap:wrap;margin-top:17px;align-items:center}#vote:disabled{background:#725741}.links button,#confirm button{border:0;background:transparent;text-decoration:underline;padding:4px 0}
+#rule{color:#756755;font-size:12px}#feedback{color:var(--red);overflow-wrap:anywhere}#confirm{padding:8px 10px;background:#efe1cb}#studio{position:fixed;left:-1200px;top:0;width:300px;height:300px;pointer-events:none}#studio canvas{width:100%;height:100%}
+@media(max-width:630px){main{padding:18px 13px 45px}h1{margin-top:20px}nav{gap:3px}nav button{font-size:12px;padding:8px 10px}#pins{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.pin{padding:7px 7px 10px}.meta{font-size:10px}.detail{display:block;padding:13px}.caption{padding:0 3px}#portrait{max-width:340px;margin:auto}#post-date{margin-top:12px}#post{width:min(430px,94vw)}}
+@media(prefers-reduced-motion:reduce){.pin{transition:none}}
+#post.loading .actions,#post.loading .links,#post.loading #rule,#post.loading #post-date,#post.loading #ingredients {display:none}

@@ -113,39 +113,54 @@ export function boundedCoverPose(pose){
 }
 export const isTool=id=>['spread','sauce','spice'].includes(pantry[id]?.kind);
 export function readRecipe(r) {
-  if(r?.v!==2||!Object.hasOwn(breads,r.bread??'simit')||!Array.isArray(r.strokes)||!Array.isArray(r.pieces)||r.pieces.length>80)return null;
+  const bread=r?.bread===undefined?'simit':r.bread;
+  if(r?.v!==2||typeof bread!=='string'||!Object.hasOwn(breads,bread)||!Array.isArray(r.strokes)||!Array.isArray(r.pieces)||r.pieces.length>80)return null;
   const validNumber=n=>Number.isFinite(n)&&Math.abs(n)<=20;
   let strokeCount=0;
   function validMarks(marks){
     if(!Array.isArray(marks)||(strokeCount+=marks.length)>200)return false;
-    return marks.every(mark=>mark&&isTool(mark.food)&&Array.isArray(mark.line)&&mark.line.length>=1&&mark.line.length<=160&&
+    return marks.every(mark=>mark&&typeof mark.food==='string'&&isTool(mark.food)&&Array.isArray(mark.line)&&mark.line.length>=1&&mark.line.length<=160&&
       mark.line.every(p=>Array.isArray(p)&&p.length===2&&p.every(n=>Number.isInteger(n)&&n>=0&&n<=1024)));
   }
-  if(!validMarks(r.strokes)||r.pieces.some(p=>!p||pantry[p.food]?.kind!=='topping'||![p.x,p.z,p.a].every(validNumber)||!validMarks(p.marks??[])))return null;
+  if(!validMarks(r.strokes)||r.pieces.some(p=>!p||typeof p.food!=='string'||pantry[p.food]?.kind!=='topping'||![p.x,p.z,p.a].every(validNumber)||!validMarks(p.marks??[])))return null;
   const marks=list=>list.map(({food,line,load,portion})=>({food,line,...(Number.isFinite(portion)?{portion:clamp(portion,1,2.6)}:{}),...(Number.isFinite(load)?{load:clamp(load,.12,1)}:{})}));
   // Recipes saved before cloth selection were photographed on the Tokat print.
-  const cloth=Object.hasOwn(cloths,r.cloth)?r.cloth:'tokat';
+  const cloth=typeof r.cloth==='string'&&Object.hasOwn(cloths,r.cloth)?r.cloth:'tokat';
   const coverPose=boundedCoverPose(r.coverPose),photoCoverPose=boundedCoverPose(r.photoCoverPose);
   const validCover=typeof r.photoCover==='string'&&Object.hasOwn(photoCovers,r.photoCover)&&(r.photoCover!=='custom'||photoCoverPose||coverPose);
   const cover=r.coverRemoved===true?{coverRemoved:true}:{
     closed:r.baseRemoved!==true&&r.bread==='tas-ekmek'&&r.closed===true,
     ...(coverPose?{coverPose}:{}),...(photoCoverPose?{photoCoverPose}:{}),...(validCover?{photoCover:r.photoCover}:{})
   };
-  return {...emptyRecipe(r.bread,cloth),...cover,...(r.baseRemoved===true?{baseRemoved:true}:{}),strokes:r.baseRemoved===true?[]:marks(r.strokes),pieces:r.pieces.map(p=>{
-    const dem=clamp(Math.floor(Number(p.dem)||0),0,10);
+  return {...emptyRecipe(bread,cloth),...cover,...(r.baseRemoved===true?{baseRemoved:true}:{}),strokes:r.baseRemoved===true?[]:marks(r.strokes),pieces:r.pieces.map(p=>{
+    const dem=clamp(Math.floor(Number.isFinite(p.dem)?p.dem:0),0,10);
     const loose=pantry[p.food].bread||pantry[p.food].drink;
     const xLimit=loose?1.6:1.3,zLimit=loose?1.6:.8;
     const opening=openingPercent(p);
     return {food:p.food,x:round(clamp(p.x,-xLimit,xLimit)),z:round(clamp(p.z,-zLimit,zLimit)),a:round(p.a%(Math.PI*2)),dem,
-      water:clamp(Math.floor(Number(p.water)||0),0,10-dem),...(opening?(p.food==='ayran'?{peel:opening}:{prepared:true}):{}),
+      water:clamp(Math.floor(Number.isFinite(p.water)?p.water:0),0,10-dem),...(opening?(p.food==='ayran'?{peel:opening}:{prepared:true}):{}),
       ...(canMirror(p.food)&&p.mirrored===true?{mirrored:true}:{}),
       ...(slices.has(p.food)&&['thin','thick'].includes(p.thickness)?{thickness:p.thickness}:{}),
       ...(p.food==='pepper-ring'&&p.taper===true?{taper:true}:{}),
       ...(!pantry[p.food].drink&&p.marks?.length?{marks:marks(p.marks)}:{})};
   })};
 }
+// Bound work as well as bytes before rendering a scene from another browser.
+// A handful of zig-zags can cost more to paint than many short, smooth lines.
+export function shareableRecipe(input){
+  const recipe=readRecipe(input);
+  if(!recipe)return null;
+  let points=0,travel=0;
+  for(const marks of [recipe.strokes,...recipe.pieces.map(piece=>piece.marks||[])]){
+    for(const {line} of marks){
+      points+=line.length;
+      for(let i=1;i<line.length;i++)travel+=Math.hypot(line[i][0]-line[i-1][0],line[i][1]-line[i-1][1]);
+    }
+  }
+  return points<=5000&&travel<=80000?recipe:null;
+}
 export function recipeFromHash(hash) {
-  try {if(!hash.startsWith('#simit=')||hash.length>750000)return null;return readRecipe(JSON.parse(atob(hash.slice(7))));}catch{return null;}
+  try {if(!hash.startsWith('#simit=')||hash.length>750000)return null;return shareableRecipe(JSON.parse(atob(hash.slice(7))));}catch{return null;}
 }
 export function recipeURL(recipe) {
   const url=new URL(location.href);url.hash='simit='+btoa(JSON.stringify(recipe));return url.href;

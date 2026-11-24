@@ -37,28 +37,34 @@ const stylesheet = await publishStatic('workbench.css');
 
 // The development server uses native ES modules. In production one versioned
 // module avoids serial discovery and parsing of the unused parts of Three.js.
-const bundle = await build({
-  absWorkingDir: root,
-  entryPoints: ['simit.js'],
-  entryNames: 'sofra-[hash]',
-  outdir: staticDir,
-  bundle: true,
-  minify: true,
-  keepNames: true,
-  format: 'esm',
-  target: 'es2022',
-  define: { SOFRA_ART_URLS: JSON.stringify(artURLs) },
-  metafile: true,
-  plugins: [{
-    name: 'local-module-versions',
-    setup(builder) {
-      builder.onResolve({filter: /^\.\/.*\.js\?v=/}, args => ({
-        path: resolve(args.resolveDir, args.path.split('?')[0])
-      }));
-    }
-  }]
-});
-const script = basename(Object.keys(bundle.metafile.outputs).find(file => file.endsWith('.js')));
+async function bundleEntry(entry,name,extraDefines={}){
+  const bundle = await build({
+    absWorkingDir: root,
+    entryPoints: [entry],
+    entryNames: name+'-[hash]',
+    outdir: staticDir,
+    bundle: true,
+    minify: true,
+    keepNames: true,
+    format: 'esm',
+    target: 'es2022',
+    define: { SOFRA_ART_URLS: JSON.stringify(artURLs),...extraDefines },
+    metafile: true,
+    plugins: [{
+      name: 'local-module-versions',
+      setup(builder) {
+        builder.onResolve({filter: /^\.\/.*\.js\?v=/}, args => ({
+          path: resolve(args.resolveDir, args.path.split('?')[0])
+        }));
+      }
+    }]
+  });
+  return basename(Object.keys(bundle.metafile.outputs).find(file => file.endsWith('.js')));
+}
+const [script,viewer,panoCSS]=await Promise.all([bundleEntry('simit.js','sofra'),bundleEntry('pano-renderer.js','pano-print'),publishStatic('pano.css')]);
+const panoScript=await bundleEntry('pano.js','pano',{SOFRA_PANO_VIEWER:JSON.stringify('./'+viewer)});
+const boardPage=await readFile(join(root,'pano.html'),'utf8');
+await writeFile(join(output,'pano.html'),boardPage.replace('./pano.js','./static/'+panoScript).replace('./pano.css',panoCSS).replace('./assets/simit-kapak.webp',artURLs['simit-kapak']));
 const html = await readFile(join(root, 'index.html'), 'utf8');
 const preload = ['kahvalti-tabagi', 'kareli-bezi', 'split-simit', 'simit-kapak', 'sesame-crust']
   .map(id => '<link rel="preload" as="image" href="' + artURLs[id] + '">').join('\n  ');
@@ -67,4 +73,13 @@ await writeFile(join(output, 'index.html'), html
   .replace(/href="workbench\.css[^"]*"/, 'href="' + stylesheet + '"')
   .replace('./assets/knife.webp', artURLs.knife)
   .replace('</head>', '  ' + preload + '\n</head>'));
-await writeFile(join(output, '_headers'), '/static/*\n  Cache-Control: public, max-age=31536000, immutable\n');
+const redirectScript=html.match(/<script>([^<]+)<\/script>/)[1];
+const redirectHash=createHash('sha256').update(redirectScript).digest('base64');
+await writeFile(join(output,'_headers'),`/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-${redirectHash}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' https://upload.wikimedia.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+/static/*
+  Cache-Control: public, max-age=31536000, immutable
+`);

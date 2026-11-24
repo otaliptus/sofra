@@ -329,7 +329,7 @@ export async function createBoard(canvas){
     }
     pose.yaw=candidates.reduce((best,yaw)=>cost(yaw)<cost(best)?yaw:best);return pose;
   }
-  function setView(id){
+  function setView(id,saved){
     if(id&&!view){
       for(const p of landing.keys()){
         const i=recipe.pieces.indexOf(p);if(i>=0)position(nodes[i],p,heights[i]);
@@ -342,7 +342,13 @@ export async function createBoard(canvas){
     orbit=id?(id==='free'?{...(editPose||photoPose('tilt'))}:photoPose(id)):{...(editPose||presetPose('top'))};
     camera=id?photoCamera:editorCamera;
     photoLens=id==='free'?'tilt':id;
+    if(saved?.pose)orbit={...saved.pose};
+    if(saved?.frame)editorAspect=saved.frame.aspect;
     refreshCover();
+    if(saved?.frame){
+      const {target,distance,tan}=saved.frame;
+      photoSetup={target:new THREE.Vector3(...target),distance,tan};resize();
+    }
   }
   function refreshCover(){
     placeCover();
@@ -696,14 +702,14 @@ export async function createBoard(canvas){
     const length=Math.hypot(p.x,p.z)||1;
     falls.push({node:g,start:clock,sign:localX(p,1),x:p.x,z:p.z,dx:p.x/length,dz:p.z/length});run();
   }
-  function capture(){
+  function capture(pixels=960){
     // Render the square gate at the actual export resolution, even on a phone.
-    const out=canvas2d(960,960),size=renderer.getSize(new THREE.Vector2()),ratio=renderer.getPixelRatio();
+    const out=canvas2d(pixels,pixels),size=renderer.getSize(new THREE.Vector2()),ratio=renderer.getPixelRatio();
     const fov=photoCamera.fov,aspect=photoCamera.aspect;
     try{
-      renderer.setDrawingBufferSize(960,960,1);
+      renderer.setDrawingBufferSize(pixels,pixels,1);
       photoCamera.aspect=1;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan));
-      photoCamera.updateProjectionMatrix();photoFocus.exportFrame(scene,photoCamera,photoSetup,960);
+      photoCamera.updateProjectionMatrix();photoFocus.exportFrame(scene,photoCamera,photoSetup,pixels);
       out.getContext('2d').drawImage(canvas,0,0);
     }finally{
       renderer.setDrawingBufferSize(size.x,size.y,ratio);
@@ -739,6 +745,7 @@ export async function createBoard(canvas){
     adjustCover(pose){settleCover(boundedCoverPose(pose),.48);render();},
     restoreCover(){placeCover();render();},
     changeCloth(id){setCloth(id);render();},
+    frame(){return {target:photoSetup.target.toArray(),distance:photoSetup.distance,tan:photoSetup.tan,aspect:editorAspect};},
     pose(){return {...orbit};},hasEditPose(){return !!editPose;},
     resetOrbit(){editPose=null;setView(view?'tilt':null);},
     drinkSpot(id){
