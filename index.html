@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#1c1510">
   <meta name="description" content="Ekmeğini seç, kahvaltını hazırla ve fotoğrafını çek.">
   <link rel="icon" href="data:,"><title>Sofra — Kahvaltı hazırla</title>
-  <link rel="stylesheet" href="workbench.css?v=slices">
+  <link rel="stylesheet" href="workbench.css?v=gazete">
   <script>if(location.hash.startsWith('#sofra='))location.replace('table.html'+location.hash)</script>
 </head>
 <body>
@@ -51,7 +51,7 @@
         <button id="undo-action" type="button" disabled>Geri al</button>
         <button id="piece-action" type="button" hidden>Kaldır</button>
       </div>
-      <div id="cloths" role="group" aria-label="Sofra bezi"></div>
+      <div id="cloths" role="group" aria-label="Sofra zemini"></div>
       <div id="knife" aria-hidden="true" hidden><img id="utensil" alt="" src="./assets/knife.webp"><img id="knife-load" alt="" hidden></div>
       <button id="put-down" type="button" hidden><span></span><b aria-hidden="true">×</b></button>
       <output id="coach" role="status">Sofra hazırlanıyor…</output>
@@ -67,6 +67,6 @@
     </footer>
   </main>
   <dialog id="sheet"><div id="sheet-content"></div></dialog>
-  <script type="module" src="simit.js?v=slices"></script>
+  <script type="module" src="simit.js?v=gazete"></script>
 </body>
 </html>

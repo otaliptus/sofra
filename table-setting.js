@@ -1,5 +1,5 @@
 import * as THREE from './node_modules/three/build/three.module.js';
-import { cloths } from './recipe.js?v=kareli';
+import { cloths } from './recipe.js?v=gazete';
 
 // The bread rests at y=0 in the flat well. Loose pieces sample the same
 // radial profile that shapes the plate, including its gently rising lip.
@@ -27,6 +27,7 @@ export function tableHeight(x,z) {
 export function setTable(scene, clothMaps, plateMap) {
   const size=48;
   for(const [id,map] of Object.entries(clothMaps)){
+    if(id==='gazete')continue;
     const width=cloths[id].width,height=width*map.image.height/map.image.width;
     map.wrapS=map.wrapT=THREE.RepeatWrapping;
     map.repeat.set(size/width,size/height);
@@ -38,6 +39,16 @@ export function setTable(scene, clothMaps, plateMap) {
   cloth.position.y=clothHeight;
   cloth.receiveShadow=true;
   scene.add(cloth);
+
+  // A single open issue has physical edges, including in low-angle photos.
+  const print=clothMaps.gazete, width=cloths.gazete.width;
+  const paper=new THREE.Mesh(new THREE.PlaneGeometry(width,width*print.image.height/print.image.width),
+    new THREE.MeshLambertMaterial({map:print}));
+  paper.rotation.set(-Math.PI/2,0,-.058);
+  paper.position.set(-.07,clothHeight,.27);
+  paper.castShadow=paper.receiveShadow=true;
+  paper.visible=false;
+  scene.add(paper);
 
   const profile=[...underside,...top.slice().reverse()];
   const geometry=new THREE.LatheGeometry(profile.map(([r,y])=>new THREE.Vector2(r,y)),160);
@@ -51,5 +62,9 @@ export function setTable(scene, clothMaps, plateMap) {
   plate.castShadow=true;
   plate.receiveShadow=true;
   scene.add(plate);
-  return {plate,setCloth(id){cloth.material.map=clothMaps[id];}};
+  return {plate,setCloth(id){
+    paper.visible=id==='gazete';
+    cloth.position.y=paper.visible?clothHeight-.004:clothHeight;
+    cloth.material.map=clothMaps[paper.visible?'kareli':id];
+  }};
 }

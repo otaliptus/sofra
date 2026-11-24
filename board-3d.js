@@ -3,10 +3,10 @@ import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
 import { createDrinks } from './drinks.js?v=free-peel';
 import { createTeaService } from './tea-glass.js?v=servings';
-import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=kareli';
+import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=gazete';
 import { aimCamera, composePhoto, presetPose } from './photo-camera.js';
-import { createCoating } from './food-marks.js?v=servings';
-import { breads, cloths, ingredients, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=slices';
+import { createCoating } from './food-marks.js?v=salca';
+import { breads, cloths, ingredients, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
 import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=slices';
 
@@ -164,7 +164,8 @@ export async function createBoard(canvas){
   sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.00014;sun.shadow.normalBias=.0005;sun.shadow.radius=2.5;
   scene.add(sun,new THREE.AmbientLight(0xffffff,1.55));
   const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','drink-art','milk-art','cay','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
-    ...ingredients.filter(f=>f.kind==='topping'&&!f.drink).map(f=>f.asset||f.id),'smear-cream','smear-jam','servings','serving-relief']);
+    ...ingredients.filter(f=>f.kind==='topping'&&!f.drink).map(f=>f.asset||f.id),
+    ...ingredients.filter(f=>f.paste).map(f=>'smear-'+f.id),'smear-cream','smear-jam','servings','serving-relief']);
   const art=Object.fromEntries(await Promise.all(Array.from(ids).map(async id=>[id,await loadImage(id)])));
   teaImages.cay=art.cay;
 

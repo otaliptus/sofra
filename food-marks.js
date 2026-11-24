@@ -1,5 +1,5 @@
 import * as THREE from './node_modules/three/build/three.module.js';
-import { clamp, pantry } from './recipe.js';
+import { clamp, pantry } from './recipe.js?v=gazete';
 
 const flakes={
   'pul-biber':{colors:['#7f2110','#ad3216','#cc4922','#e19b37'],size:4.3,stretch:.63,count:14},
@@ -71,6 +71,20 @@ function knife(ctx,image,points,unit,load){
 }
 function canvas(w,h){
   const surface=document.createElement('canvas');surface.width=w;surface.height=h;return surface;
+}
+
+// Use the same knife ridges for the colour and height of the salça. The loaded
+// end stands proud of the bread and the scraped end thins to the crumb.
+function pasteRelief(image){
+  const surface=canvas(150,Math.round(150*image.height/image.width)),ctx=surface.getContext('2d');
+  ctx.drawImage(image,0,0,surface.width,surface.height);
+  const pixels=ctx.getImageData(0,0,surface.width,surface.height);
+  for(let y=0;y<surface.height;y++)for(let x=0;x<surface.width;x++){
+    const i=(y*surface.width+x)*4,red=pixels.data[i];
+    pixels.data[i]=(23+red*.23)*(1-.76*x/(surface.width-1));
+    pixels.data[i+1]=pixels.data[i+2]=0;
+  }
+  ctx.putImageData(pixels,0,0);return surface;
 }
 
 const serving = {
@@ -230,7 +244,11 @@ export function createCoating(ref,art){
     const kind=pantry[mark.food].kind;
     if(kind==='spice'){if(!layer.relief)scatter(ctx,flakes[mark.food],points,unit,random);}
     else if(kind==='sauce')pipe(ctx,mark.food,points,unit,mark.portion??1,layer.relief);
-    else serve(ctx,art,mark,points,unit,random,layer.relief);
+    else if(pantry[mark.food].paste){
+      const image=art['smear-'+mark.food],key='relief-'+mark.food;
+      if(layer.relief&&!art[key])art[key]=pasteRelief(image);
+      knife(ctx,layer.relief?art[key]:image,points,unit*1.5,mark.load??1);
+    }else serve(ctx,art,mark,points,unit,random,layer.relief);
   }
   function deposit(ctx,layer,mark){
     if(!mark)return;

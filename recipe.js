@@ -11,6 +11,8 @@ export const ingredients = [
   {id:'cream',name:'Bal kaymak',en:'Honey and clotted cream',asset:'kaymak',kind:'spread'},
   {id:'jam',name:'Vişne reçeli',en:'Sour cherry jam',asset:'recel',kind:'spread'},
   {id:'menemen',name:'Menemen',en:'Tomato and eggs',kind:'spread'},
+  {id:'domates-salcasi',name:'Domates salçası',en:'Tomato paste',kind:'spread',paste:true},
+  {id:'biber-salcasi',name:'Biber salçası',en:'Red pepper paste',kind:'spread',paste:true},
   ...[
     ['white-cheese','Beyaz peynir','White cheese',.37,.027],
     ['kasar','Kaşar peyniri','Kaşar cheese',.39,.014],
@@ -47,7 +49,8 @@ export const ingredients = [
 export const pantry=Object.fromEntries(ingredients.map(d=>[d.id,d]));
 export const cloths={
   kareli:{name:'Kareli',asset:'kareli-bezi',width:1},
-  tokat:{name:'Tokat',asset:'tokat-bezi',width:.85}
+  tokat:{name:'Tokat',asset:'tokat-bezi',width:.85},
+  gazete:{name:'Gazete',asset:'gazete-kagidi',width:3.56}
 };
 export const emptyRecipe=(bread='simit',cloth='kareli')=>({v:2,bread,cloth,closed:false,strokes:[],pieces:[]});
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));

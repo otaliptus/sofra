@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="tr">
+<meta charset="utf-8">
+<title>Sofra Postası · Pazar baskısı</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { --ink: #37342e; --red: #8e332c; }
+  body { margin: 0; width: 1840px; height: 1220px; display: flex; position: relative; color: var(--ink);
+    background: #e8e2d2; font: 21px/1.13 "Times New Roman", "Liberation Serif", serif; }
+  body::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .075; background-image: var(--fibres); z-index: 1; }
+  body::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(90deg, #55422813, transparent 2%, transparent 44%, #786f5b0a 48%, #61544236 49.89%, #fffaf14f 50.06%, #79684d12 50.4%, transparent 55%, transparent 98%, #6a5c4512),
+      linear-gradient(178deg, transparent 47%, #79684d0e 49.85%, #fff9ed33 50%, transparent 51%); }
+  .paper { width: 50%; padding: 27px 34px 21px; display: flex; flex-direction: column; gap: 12px; }
+  .paper + .paper { padding-left: 34px; }
+  h1, h2, h3, p, figure, blockquote { margin: 0; }
+  .strip, footer { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    font: bold 15px/1.1 "Arial Narrow", Arial, sans-serif; letter-spacing: 1.5px; text-transform: uppercase; }
+  .strip { border-top: 4px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 8px 0 6px; }
+  h1 { font: bold 113px/.96 Georgia, "Times New Roman", serif; letter-spacing: -7px; text-align: center; color: var(--red); }
+  .imprint { border-bottom: 6px double var(--ink); padding-bottom: 7px; font: italic 20px Georgia, serif; text-align: center; }
+  .label { font: bold 17px/1.1 "Arial Narrow", Arial, sans-serif; letter-spacing: 1.6px; text-transform: uppercase; color: var(--red); }
+  h2 { font: bold 79px/.99 "Times New Roman", serif; letter-spacing: -3.5px; }
+  .lead { font-size: 28px; line-height: 1.08; font-style: italic; }
+  .picture { width: 100%; background: url("posta-baski.webp") no-repeat center top / 100% auto; filter: contrast(.93); mix-blend-mode: multiply; }
+  .ferry { height: 285px; background-position: center 9%; }
+  .baker { height: 236px; background-position: center 91%; }
+  figcaption { margin-top: 4px; font: italic 16px/1.16 Georgia, serif; }
+  .copy { column-count: 3; column-gap: 22px; column-rule: 1px solid #827c6e; text-align: justify; hyphens: manual; }
+  .copy p + p { text-indent: 15px; }
+  .copy b { font-size: .89em; }
+  .bottom { display: grid; grid-template-columns: 1.65fr 1fr; gap: 20px; border-top: 3px solid var(--ink); padding-top: 10px; margin-top: auto; }
+  h3 { margin: 3px 0 5px; font: bold 38px/.99 "Times New Roman", serif; letter-spacing: -1.25px; }
+  .notice { padding: 9px 13px; border: 4px double var(--red); text-align: center; }
+  .notice h3 { font-size: 34px; color: var(--red); }
+  .notice p { font-size: 20px; font-style: italic; }
+  footer { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--ink); font-size: 13px; }
+  .section { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 6px double var(--ink); padding-bottom: 8px; }
+  .section strong { font: italic bold 67px/.99 Georgia, serif; color: var(--red); letter-spacing: -4px; }
+  .section span { font: bold 16px "Arial Narrow", Arial, sans-serif; letter-spacing: 2px; }
+  .feature { display: grid; grid-template-columns: 1.95fr 1fr; gap: 20px; }
+  .feature h2 { margin: 5px 0 10px; font-size: 69px; }
+  .sidebar { border-left: 1px solid var(--ink); padding-left: 17px; }
+  .sidebar h3 { margin: 9px 0; font-size: 34px; }
+  .sidebar p { font-size: 20px; }
+  .quote { text-align: center; border-block: 3px double var(--ink); font: italic 30px/1.12 Georgia, serif; padding: 9px 2px; }
+  .notes { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .notes section + section { border-left: 1px solid #827c6e; padding-left: 18px; }
+  .notes h3 { font-size: 35px; }
+  .notices { border-top: 3px solid var(--ink); margin-top: auto; padding-top: 8px; }
+  .notices header { font: bold 29px/1.1 Georgia, serif; color: var(--red); border-bottom: 1px solid var(--ink); padding-bottom: 5px; margin-bottom: 7px; }
+  .notices p { font-size: 19px; }
+</style>
+<body>
+  <article class="paper">
+    <header class="strip"><span>İstanbul</span><span>Pazar baskısı</span><span>Yıl 1 · Sayı 7</span></header>
+    <h1>Sofra Postası</h1>
+    <p class="imprint">İskelelerden, fırınlardan ve mutfak pencerelerinden haberler</p>
+    <div class="label">Son dakika · Menemen Meclisi vapurda toplandı</div>
+    <h2>Soğan krizi!</h2>
+    <p class="lead">Oylama altıya altı bitti. Başkanın gözü yaşarınca iki taraf da zafer ilan etti.</p>
+    <figure><div class="picture ferry"></div><figcaption>Olağanüstü oturumun yapıldığı vapur. Kamaradaki soğan kokusu hâlâ çıkmadı.</figcaption></figure>
+    <div class="copy">
+      <p><b>VAPURDAN —</b> Menemene soğan koyma teklifi görüşülürken iktidar sıralarından “Millet arkamızda!” sesleri yükseldi. Arkalarında bekleyen üç yolcunun aslında tuvalet sırasında olduğu anlaşıldı.</p>
+      <p>Muhalefet sözcüsü, tavaya tek halka düşerse masadan kalkacaklarını bildirdi. Garson kızarmış ekmek getirince kararın bir sonraki öğüne ertelendiğini açıkladı.</p>
+      <p>Son sözü aşçı söyledi. İki küçük tava çıkarıp birine soğan koydu. Meclis çözümü alkışladı, ardından fikrin kime ait olduğu konusunda yeniden ikiye bölündü.</p>
+    </div>
+    <p class="quote">Başkan: “Tutanağa ‘ağladı’ yazmayın, soğan doğradık.”</p>
+    <div class="bottom">
+      <section><div class="label">Anket · Hata payı bir sandalye</div><h3>Halkın yarısı kararsız</h3>
+        <p>Muhabirimiz iki kişiye sordu. Biri “demli” dedi. Öteki, eşi gelmeden çay söylemediğini belirtti. Her iki taraf da araştırmayı kendi hesabından paylaştı.</p></section>
+      <aside class="notice"><div class="label">Küçük ilan</div><h3>Kayıp çay kaşığı</h3><p>Sapında tek lale. En son vişne reçelinde görüldü. Bulan, karşı bakkala bıraksın.</p></aside>
+    </div>
+    <footer><span>Sofra Postası</span><span>Mahallenin hayalî gazetesi</span><span>1</span></footer>
+  </article>
+  <article class="paper">
+    <header class="strip"><span>Sofra Postası</span><span>Pazar eki</span><span>Sayfa 2</span></header>
+    <div class="section"><strong>Mahalle arası</strong><span>ÇARŞI &amp; PAZAR</span></div>
+    <div class="feature">
+      <section><div class="label">Fırında bütçe görüşmeleri</div><h2>Simitte delik vergisi!</h2>
+        <figure><div class="picture baker"></div><figcaption>Rıza Usta, vergiye konu olan boşluğu muhabirimize gösterdi.</figcaption></figure>
+      </section>
+      <aside class="sidebar"><div class="label">Sandıktan çıkanlar</div><h3>Tek adaylı seçim berabere!</h3>
+        <p>Apartman seçimine iki kişi geldi. Komşusu İrfan Bey’e, kendine oy vermeyi ayıp bulan İrfan Bey de bodrumdaki kedi Pamuk’a oy verdi.</p>
+        <h3>İlk vaat geldi</h3><p>Pamuk, seçim sonuçlarına ilişkin soruları cevapsız bıraktı. Kapıcının dairesinde bir tabak süt içtiği bildirildi.</p></aside>
+    </div>
+    <div class="copy">
+      <p><b>ÇARŞI —</b> Fırın encümeni, simidin ortasındaki boşluğun bugüne dek bedava kullanılmasını bütçe açığının başlıca sebebi saydı. Yeni tarife çap üzerinden hesaplanacak.</p>
+      <p>Muhalefet, “Delikleri biz kapatırız” diyerek bir tepsi örnek dağıttı. İlk lokmayı alan çocuk annesine döndü: “Bunlar poğaça.” Tasarı çay molasında geri çekildi.</p>
+    </div>
+    <blockquote class="quote">Rıza Usta: “Hamuru benden, boşluğu kimden aldınız?”</blockquote>
+    <div class="notes">
+      <section><div class="label">Diplomasi</div><h3>Salça zirvesi kızıştı</h3><p>Domates ve biber heyetleri aynı kavanoza girmeyi reddetti. İki taraftan da numune alan ekmek heyeti görüşmelerden memnun ayrıldı.</p></section>
+      <section><div class="label">Meclis kulisi</div><h3>Son zeytin için önerge</h3><p>İki grup tabakta kalan zeytin için komisyon kurulmasında uzlaştı. Tutanak kâtibi çekirdeği peçetesine çıkarınca gündem düştü.</p></section>
+    </div>
+    <div class="bottom"><section><div class="label">Kıyıda hava</div><h3>Hırkanızı alın</h3>
+      <p>İskele güneşli, güverte biraz serin. Sabah gazetesi rüzgârda uçarsa bir köşesini çay tabağının altına sıkıştırın.</p></section>
+      <aside class="notice"><div class="label">Radyoda bu sabah</div><h3>İstek saati</h3><p>İlk türkü bu hafta çarşıdaki bütün çıraklara gidiyor.</p></aside></div>
+    <div class="notices"><header>Mahalle ilanları</header><div class="notes">
+      <p><b>TAKAS.</b> İki kavanoz kayısı reçeline bir bakır cezve aranıyor. Sapı sağlam olsun, kalayı konuşulur.</p>
+      <p><b>DUYURU.</b> Pazar günü avluda uzun masa kurulacak. Sandalyesini getirenin minderi bizden.</p>
+    </div></div>
+    <footer><span>2</span><span>Pazar eki</span><span>Sofra Postası</span></footer>
+  </article>
+<script>
+  // A repeatable grain tile keeps the master and its baked game print in register.
+  const tile = document.createElement('canvas');
+  tile.width = tile.height = 192;
+  const ctx = tile.getContext('2d'), pixels = ctx.createImageData(tile.width, tile.height);
+  let seed = 1947;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const grey = seed >>> 24;
+    pixels.data.set([grey, grey, grey, 255], i);
+  }
+  ctx.putImageData(pixels, 0, 0);
+  document.body.style.setProperty('--fibres', 'url(' + tile.toDataURL() + ')');
+</script>
+</body>
+</html>
