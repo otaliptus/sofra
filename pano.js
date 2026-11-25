@@ -1,3 +1,4 @@
+import {workflow,detailEdges} from './workflows.js';
 import {boardRequest,boardWrite,publicURL} from './pano-api.js';
 import {breads,cloths,pantry,recipeURL} from './recipe.js';
 import {assetURL} from './asset-url.js';
@@ -6,7 +7,8 @@ const $=selector=>document.querySelector(selector);
 const pins=$('#pins'),dialog=$('#post'),more=$('#more'),notice=$('#status');
 const viewerURL=typeof SOFRA_PANO_VIEWER==='undefined'?'./pano-renderer.js':SOFRA_PANO_VIEWER;
 const dateLabel=ms=>new Intl.DateTimeFormat('tr',{day:'numeric',month:'short',year:'numeric',timeZone:'Europe/Istanbul'}).format(ms);
-let sort='new',pageToken=null,revision=0,detailRevision=0,current=null,confirmAction=null;
+const detail=workflow(detailEdges);
+let sort='new',pageToken=null,revision=0,current=null;
 const known=new Set(),prints=new Map();
 const initialURL=new URL(location.href);
 const removalKey=/^#kaldir=([a-f0-9]{64})$/.exec(initialURL.hash)?.[1],removalPost=initialURL.searchParams.get('p');
@@ -50,7 +52,7 @@ function picture(post,size){
   return box;
 }
 function closeDetail(){
-  current=null;detailRevision++;if(dialog.open)dialog.close();
+  detail.send('dismiss');current=null;if(dialog.open)dialog.close();
   const url=new URL(location.href);if(url.searchParams.has('p')){url.searchParams.delete('p');history.replaceState(null,'',url);}
 }
 function renderCard(post){
@@ -90,13 +92,13 @@ function setSort(value){
   load(true);
 }
 async function openPost(id,changeURL=false,replacePrint=true){
-  const gen=++detailRevision;current=null;$('#confirm').hidden=true;$('#feedback').textContent='';
+  detail.send('dismiss');const visit=detail.send('open');current=null;$('#confirm').hidden=true;$('#feedback').textContent='';
   if(changeURL){const url=new URL(location.href);url.searchParams.set('p',id);history.pushState(null,'',url);}
   if(!dialog.open)dialog.showModal();
   if(replacePrint){$('#post-title').textContent='Tarif yükleniyor…';$('#portrait').replaceChildren();}
   dialog.classList.add('loading');
   try{
-    const p=await boardRequest('/'+id);if(gen!==detailRevision||!dialog.open)return;
+    const p=await boardRequest('/'+id);if(!dialog.open||!detail.send('loaded',visit))return;
     current=p;dialog.classList.remove('loading');
     $('#post-title').textContent=p.title;$('#post-date').textContent=dateLabel(p.created)+' · Toplam '+p.total+' oy';
     const ingredients=new Set();
@@ -106,10 +108,10 @@ async function openPost(id,changeURL=false,replacePrint=true){
     $('#ingredients').textContent=[...ingredients].join(' · ');
     if(replacePrint)$('#portrait').replaceChildren(picture(p,640));
     $('#vote').textContent=(p.mine?'♥':p.voted?'♥ Oy verdin':'♡ Oy ver');
-    $('#vote').disabled=!!(p.mine||p.voted);$('#remove').hidden=!p.mine&&!(removalKey&&id===removalPost);$('#report').hidden=!!p.mine;$('#report').disabled=!!p.reported;
+    syncActions();$('#remove').hidden=!p.mine&&!(removalKey&&id===removalPost);$('#report').hidden=!!p.mine;
     $('#report').textContent=p.reported?'Bildirildi':'Bildir';
     const dest=new URL('/',location.origin);dest.hash=new URL(recipeURL(p.recipe)).hash;$('#remix').href=dest.href;
-  }catch(error){if(gen===detailRevision){$('#post-title').textContent=error.message;$('#portrait').replaceChildren();}}
+  }catch(error){if(dialog.open&&detail.send('failed',visit)){$('#post-title').textContent=error.message;$('#portrait').replaceChildren();}}
 }
 function route(){
   const id=new URL(location.href).searchParams.get('p');
@@ -119,23 +121,46 @@ for(const b of document.querySelectorAll('[data-sort]'))b.onclick=()=>setSort(b.
 more.onclick=()=>{more.textContent='Daha fazla göster';load(false);};
 $('#close').onclick=closeDetail;dialog.addEventListener('cancel',e=>{e.preventDefault();closeDetail();});
 dialog.onclick=e=>{if(e.target===dialog)closeDetail();};window.addEventListener('popstate',route);
+function syncActions(){
+  const ready=detail.state==='ready';
+  $('#vote').disabled=!ready||current.mine||current.voted;
+  $('#report').disabled=!ready||current.mine||current.reported;
+  $('#remove').disabled=!ready;
+}
 async function mutate(action){
   if(!current)return;
-  const id=current.id,button=$('#'+action);button.disabled=true;$('#feedback').textContent='';
+  const visit=detail.send(action);if(!visit)return;
+  const id=current.id;syncActions();$('#confirm').hidden=true;$('#feedback').textContent='';
   try{
     await boardWrite('/'+id+(action==='remove'?'':'/'+action),action==='remove'&&id===removalPost?{key:removalKey}:{},action==='remove'?'DELETE':'POST');
-    if(current?.id!==id)return;
-    if(action==='remove'){closeDetail();await load(true);return;}
+    // The feed is shared across visits. A successful vote/removal still affects it.
+    if(action!=='report')load(true);
+    if(!detail.send('success',visit))return;
+    if(action==='remove'){closeDetail();return;}
     await openPost(id,false,false);
-    if(action==='vote')await load(true);
-  }catch(error){if(current?.id===id){$('#feedback').textContent=error.message;button.disabled=false;}}
+  }catch(error){
+    if(detail.send('failed',visit)){$('#feedback').textContent=error.message;syncActions();}
+  }
 }
 $('#vote').onclick=()=>mutate('vote');
 for(const action of ['report','remove'])$('#'+action).onclick=()=>{
-  confirmAction=action;$('#confirm-label').textContent=action==='remove'?'Tarifin herkesin panosundan kaldırılsın mı?':'Bu tarif incelenmek üzere bildirilsin mi?';
+  if(!detail.send(action==='remove'?'askRemove':'askReport'))return;
+  syncActions();
+  $('#confirm-label').textContent=action==='remove'?'Tarifin herkesin panosundan kaldırılsın mı?':'Bu tarif incelenmek üzere bildirilsin mi?';
   $('#confirm').hidden=false;$('#confirm-no').focus();
 };
-$('#confirm-no').onclick=()=>$('#confirm').hidden=true;
-$('#confirm-yes').onclick=()=>{$('#confirm').hidden=true;mutate(confirmAction);};
-$('#share').onclick=async()=>{if(!current)return;const url=publicURL(current.id);try{await navigator.clipboard.writeText(url);$('#feedback').textContent='Bağlantı kopyalandı.';}catch{$('#feedback').textContent=url;}};
+$('#confirm-no').onclick=()=>{
+  if(!detail.send('cancel'))return;
+  $('#confirm').hidden=true;syncActions();
+};
+$('#confirm-yes').onclick=()=>{
+  if(detail.state==='confirmReport')mutate('report');
+  if(detail.state==='confirmRemove')mutate('remove');
+};
+$('#share').onclick=async()=>{
+  if(!current)return;
+  const visit=detail.visit,url=publicURL(current.id);
+  let message;try{await navigator.clipboard.writeText(url);message='Bağlantı kopyalandı.';}catch{message=url;}
+  if(detail.visit===visit)$('#feedback').textContent=message;
+};
 load(true);route();

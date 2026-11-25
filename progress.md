@@ -125,3 +125,5 @@ Opening current or legacy shared recipes now previews the incoming breakfast bef
 Ekmek seç can remove the base, its matching top and all extra shelf breads with one undoable edit. The menu works on a closed sandwich and preserves the remaining food, drink and seasoning. Yeni tarifler lists recent posts. Bugün and Bu hafta include recipes published in the period before their first vote.
 
 The editor frames the plate and all placed food, including loose bread, drinks and tall stacks. Rising layers progressively tilt the default view. Manual orbit and an explicit overhead view take priority. The camera refits after a placement or turn ends. Desktop and phone viewport checks exercised a 40-layer sandwich, moving the top tomato, undo, Foto round-trips and building up from an empty plate.
+
+Made Foto/album/publishing, Pano detail, pointer ownership, radio intent and bread-half edits explicit. Added six TLA+ configurations with a negative control and repeatable Chromium/SQLite checks in formal/. The stale-photo counterexample takes four events after initialization. The model bounds and reproduction commands are in formal/README.md.

@@ -1,3 +1,5 @@
+import {editBread} from './bread-state.js';
+import { workflow, photoEdges, finishGesture } from './workflows.js';
 import { boardWrite, publicURL } from './pano-api.js';
 import { assetURL } from './asset-url.js';
 import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
@@ -32,6 +34,7 @@ let board,selected=selectionFor(stored?.editSelection),brush=null,gesture=null,m
 const historyStack=editHistory(savedRecipe&&stored?.editHistory);
 const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
 let audioContext,noticeTimer,teaFrame=0,drinkService=null,albumDB;
+const photos=workflow(photoEdges);
 let wheelTurn=null;
 const clothImage=id=>'url("'+new URL(assetURL(cloths[id].asset),document.baseURI).href+'")';
 for(const [id,cloth] of Object.entries(cloths)){
@@ -105,8 +108,7 @@ function keepCover(fromWheel=false){
   if(!pose)return;
   if(fromWheel)checkpointWheel('cover');else checkpoint();
   if(mode==='edit'){
-    recipe.coverPose=pose;recipe.closed=false;
-    delete recipe.photoCover;delete recipe.photoCoverPose;
+    editBread(recipe,'placeTop',pose);
     board.fitEditedCover();
     lidButton();
   }else{recipe.photoCoverPose=pose;recipe.photoCover='custom';}
@@ -122,8 +124,8 @@ function lidButton(){
   button.textContent=recipe.closed?'Sandviçi aç':'Sandviçi kapat';button.setAttribute('aria-pressed',String(!!recipe.closed));
 }
 $('#lid').onclick=()=>{
-  checkpoint();recipe.closed=!recipe.closed;delete recipe.coverRemoved;
-  delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
+  if(gesture||mode!=='edit'||recipe.baseRemoved||!breads[recipe.bread].closable)return;
+  checkpoint();editBread(recipe,'toggleLid');
   selected=-1;chooseBrush(null);update();
 };
 function update(settle=false,focusPiece){
@@ -144,24 +146,16 @@ function undo(){
 function toggleBase(){
   checkpoint();
   chooseBrush(null);
-  if(recipe.baseRemoved){
-    delete recipe.baseRemoved;selected=breadSelection;
-  }else{
-    if(recipe.closed)recipe.coverPose=boundedCoverPose(board.coverPose());
-    recipe.closed=false;recipe.baseRemoved=true;recipe.strokes=[];selected=-1;
-  }
+  editBread(recipe,'toggleBase',recipe.closed?board.coverPose():null);
+  selected=recipe.baseRemoved?-1:breadSelection;
   update();
-}
-function removeCover(){
-  recipe.coverRemoved=true;recipe.closed=false;
-  delete recipe.coverPose;delete recipe.photoCover;delete recipe.photoCoverPose;
 }
 function removeSelected(){
   if(mode!=='edit'||gesture)return;
   const cover=selected===coverSelection;
   if(cover){
     if(recipe.coverRemoved)return;
-    checkpoint();removeCover();
+    checkpoint();editBread(recipe,'removeTop');
   }else if(selected===breadSelection){
     if(recipe.baseRemoved||recipe.closed)return;
     toggleBase();return;
@@ -281,8 +275,8 @@ function pickFood(id,x,z){
     if(board.covers(x,z)){moveCoverHint();return;}
   }
   if(recipe.coverRemoved&&pantry[id].bread===recipe.bread){
-    checkpoint();delete recipe.coverRemoved;
-    recipe.coverPose=boundedCoverPose({x,z,yaw:0});selected=coverSelection;update();clink(id);return;
+    checkpoint();editBread(recipe,'placeTop',{x,z,yaw:0});
+    selected=coverSelection;update();clink(id);return;
   }
   const piece=makePiece(id,x,z);releasePiece(piece);
   if(recipe.pieces.includes(piece)&&pantry[id].opening)hint(id==='ayran'?'Kapağı soymak için ayrana dokun.':'Pipeti takmak için kutuya dokun.');
@@ -436,25 +430,25 @@ function move(e){
   }
 }
 function ended(e){
-  if(!gesture||e.pointerId!==gesture.id)return;
+  const outcome=finishGesture(gesture,'canvas',e);if(!outcome)return;
   const g=gesture;gesture=null;canvas.dataset.cursor=pantry[brush]?.kind||'';
   if(g.kind==='cover-move'&&g.moved){
-    if(e.type==='pointerup')keepCover();else board.restoreCover();
+    if(outcome==='commit')keepCover();else board.restoreCover();
   }
-  if(g.kind==='orbit'&&!g.moved&&e.type==='pointerup'&&mode==='edit'){chooseBrush(null);selected=-1;}
+  if(g.kind==='orbit'&&!g.moved&&outcome==='commit'&&mode==='edit'){chooseBrush(null);selected=-1;}
   if(g.kind==='ink'){
     knife.classList.remove('pressing');knife.style.removeProperty('--paste-load');
     cancelAnimationFrame(g.holdFrame);cancelAnimationFrame(paintFrame);paintFrame=0;
-    if(e.type==='pointerup'){checkpoint(g.before,g.surface);selected=g.surface;}
+    if(outcome==='commit'){checkpoint(g.before,g.surface);selected=g.surface;}
     else recipe=JSON.parse(g.before);
     update();
     if(e.pointerType==='touch')knife.hidden=true;
   }else if(g.kind==='piece'){
     board.lift(null);
-    if(e.type==='pointerup'&&g.moved){
+    if(outcome==='commit'&&g.moved){
       if(board.pickCover(e.clientX,e.clientY))moveCoverHint();else releasePiece(g.next,g.i);
     }
-    else if(e.type==='pointerup')openDrink();
+    else if(outcome==='commit')openDrink();
   }
   showHandle();
 }
@@ -466,7 +460,7 @@ canvas.addEventListener('dblclick',e=>{
 });
 canvas.addEventListener('pointerdown',begin);canvas.addEventListener('pointermove',move);
 canvas.addEventListener('pointerup',ended);canvas.addEventListener('pointercancel',ended);
-canvas.addEventListener('lostpointercapture',e=>{if(gesture?.kind==='cover-move'||gesture?.kind==='ink')ended(e);});
+canvas.addEventListener('lostpointercapture',ended);
 canvas.addEventListener('pointerleave',()=>knife.hidden=true);
 function angleAt(e,p){const q=board.xy(e.clientX,e.clientY,board.handle(selected)?.height||0);return Math.atan2(q.z-p.z,q.x-p.x);}
 function coverAngle(e,pose,height){
@@ -501,20 +495,19 @@ turn.onpointermove=e=>{
   const p=recipe.pieces[selected];p.a=round(gesture.a+gesture.start-angleAt(e,p));board.sync(recipe,false,false);
   const h=board.handle(selected);turn.style.left=h.x+'px';turn.style.top=h.y+'px';
 };
-turn.onpointerup=turn.onpointercancel=e=>{
-  if(gesture?.kind==='cover-turn'&&e.pointerId===gesture.id){
+turn.onpointerup=turn.onpointercancel=turn.onlostpointercapture=e=>{
+  const outcome=finishGesture(gesture,'handle',e);if(!outcome)return;
+  if(gesture.kind==='cover-turn'){
     const moved=gesture.moved;gesture=null;
-    if(e.type!=='pointerup'){board.restoreCover();showHandle();}
+    if(outcome==='cancel'){board.restoreCover();showHandle();}
     else if(moved)keepCover();else twistCover(Math.PI/12);
     return;
   }
-  if(gesture?.kind!=='turn'||e.pointerId!==gesture.id)return;
   const g=gesture;gesture=null;
-  if(e.type!=='pointerup')recipe.pieces[selected].a=g.a;
+  if(outcome==='cancel')recipe.pieces[selected].a=g.a;
   else{if(Math.abs(recipe.pieces[selected].a-g.a)<.01)recipe.pieces[selected].a+=Math.PI/12;recipe.pieces[selected].a=round(recipe.pieces[selected].a%(Math.PI*2));checkpoint(g.old);}
   update();
 };
-turn.onlostpointercapture=e=>{if(gesture?.kind==='cover-turn'||gesture?.kind==='turn')turn.onpointercancel(e);};
 turn.onclick=e=>{
   if(mode==='camera'||selected===coverSelection){if(e.detail===0)twistCover(Math.PI/12);return;}
   if(e.detail!==0||selected<0)return;
@@ -533,14 +526,15 @@ canvas.addEventListener('wheel',e=>{
   e.preventDefault();selected=i;const piece=recipe.pieces[i];checkpointWheel(piece);
   piece.a=round((piece.a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
 },{passive:false});
-function dialog(title,html){
+function dialog(title,html,photoDialog=false){
+  if(!photoDialog)photos.send('dismiss');
   endService();
   $('#sheet-content').innerHTML='<div class="dialog-head"><h2 id="dialog-title">'+title+'</h2><button class="close" aria-label="Kapat">×</button></div>'+html;
   sheet.setAttribute('aria-labelledby','dialog-title');if(!sheet.open)sheet.showModal();
   $('.close').onclick=()=>sheet.close();
 }
 function endService(){cancelAnimationFrame(teaFrame);drinkService?.close();drinkService=null;}
-sheet.addEventListener('close',()=>{if(!sheet.open)endService();});
+sheet.addEventListener('close',()=>{if(!sheet.open){endService();if(photos.state!=='encoding')photos.send('dismiss');}});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
 $('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Sivri biberi Aynala ile ters çevir. Biberi veya zeytini seçip Dilimle ile halkalara kes. Dilimlerde Kalınlık ile inceliği ayarla.</li><li>Sofradaki içeceğe dokun. Çayı doldur, ayranın folyosunu soy veya kutuya pipet tak.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı ve salçaları bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Alt ekmeği seçip Kaldır’a dokun. Ekmek menüsünden de alt parçayı kaldırabilir veya geri koyabilirsin. Üst parça tabağın yanında başlar. Raftaki son dört ekmek yarısını da tabağa sürükleyebilirsin. Sofrada ve Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
@@ -572,8 +566,7 @@ $('#fresh').onclick=()=>{
   dialog('Ekmek seç','<div class="bread-options">'+options+'</div><div class="buttons"><button id="remove-breads"'+(hasBread?'':' disabled')+'>Tüm ekmekleri kaldır</button>'+baseAction+restore+'<button id="random">Rastgele hazırla</button><button id="undo">Geri al</button></div>');
   $('#remove-breads').onclick=()=>{
     sheet.close();if(mode==='camera')leaveCamera();
-    checkpoint();removeCover();recipe.baseRemoved=true;recipe.strokes=[];
-    recipe.pieces=recipe.pieces.filter(p=>!pantry[p.food].bread);
+    checkpoint();editBread(recipe,'removeAll');
     selected=-1;chooseBrush(null);update();canvas.focus({preventScroll:true});
   };
   $('#toggle-base').onclick=()=>{
@@ -581,7 +574,7 @@ $('#fresh').onclick=()=>{
     canvas.focus({preventScroll:true});
   };
   if(restore)$('#restore-cover').onclick=()=>{
-    checkpoint();delete recipe.coverRemoved;sheet.close();selected=coverSelection;chooseBrush(null);update();canvas.focus({preventScroll:true});
+    checkpoint();editBread(recipe,'restoreTop');sheet.close();selected=coverSelection;chooseBrush(null);update();canvas.focus({preventScroll:true});
   };
   $('#undo').disabled=!historyStack.length;$('#undo').onclick=()=>{undo();sheet.close();};
   for(const b of $('.bread-options').children)b.onclick=()=>startBreakfast(b.dataset.bread,recipe.cloth);
@@ -623,7 +616,7 @@ function openTea(){
 }
 function camera(a){
   if(gesture)return;
-  mode='camera';angle=a;selected=-1;chooseBrush(null);hint('');showHandle();$('#game').classList.add('camera');
+  photos.send('dismiss');mode='camera';angle=a;selected=-1;chooseBrush(null);hint('');showHandle();$('#game').classList.add('camera');
   $('#back').hidden=$('#views').hidden=$('#finder').hidden=false;
   showCoverChoice();
   for(const b of $('#views').children)b.setAttribute('aria-pressed',String(b.dataset.angle===a));
@@ -631,7 +624,7 @@ function camera(a){
 }
 function leaveCamera(){
   if(gesture)return;
-  mode='edit';$('#game').classList.remove('camera');$('#back').hidden=$('#views').hidden=$('#finder').hidden=$('#cover-control').hidden=true;board.setView(null);showHandle();lidButton();hint('');
+  photos.send('dismiss');mode='edit';$('#game').classList.remove('camera');$('#back').hidden=$('#views').hidden=$('#finder').hidden=$('#cover-control').hidden=true;board.setView(null);showHandle();lidButton();hint('');
 }
 coverSelect.onchange=()=>{
   const choice=coverSelect.value;
@@ -649,48 +642,59 @@ function toBlob(canvas,type,quality){return new Promise((res,rej)=>canvas.toBlob
 function fetchAlbum(action,record){albumDB ||= photoStore();return albumDB(action,record);}
 function photoPreview(record,fromAlbum=false){
   if(snapshot)URL.revokeObjectURL(snapshot);snapshot=URL.createObjectURL(record.blob);
-  dialog(record.id?'Sofra № '+record.id:'Fotoğraf','<img class="print" alt="Simit fotoğrafı"><div class="buttons">'+(fromAlbum?'<button id="remix" class="primary">Sofraya ekle</button>':'<button id="keep" class="primary">Sakla</button>')+'<a id="png" download="sofra.png">İndir</a><button id="share">Bağlantı</button><button id="hang">Panoya as</button></div><p class="feedback" role="status"></p>');
+  dialog(record.id?'Sofra № '+record.id:'Fotoğraf','<img class="print" alt="Simit fotoğrafı"><div class="buttons">'+(fromAlbum?'<button id="remix" class="primary">Sofraya ekle</button>':'<button id="keep" class="primary">Sakla</button>')+'<a id="png" download="sofra.png">İndir</a><button id="share">Bağlantı</button><button id="hang">Panoya as</button></div><p class="feedback" role="status"></p>',true);
   $('.print').src=snapshot;$('#png').href=snapshot;
-  $('#hang').onclick=()=>publishPhoto(record,fromAlbum);
+  const feedback=$('.feedback'),hang=$('#hang');
+  hang.onclick=()=>{if(photos.send('compose'))publishPhoto(record,fromAlbum);};
   if(!fromAlbum)$('#keep').onclick=async()=>{
-    const button=$('#keep');button.disabled=true;
-    try{record.id=await fetchAlbum('keep',record);photoPreview(record,true);}
-    catch{button.disabled=false;$('.feedback').textContent='Albüm kaydedilemedi. Fotoğrafı indirebilirsin.';}
+    const visit=photos.send('save');if(!visit)return;
+    const button=$('#keep');button.disabled=hang.disabled=true;
+    try{record.id=await fetchAlbum('keep',record);if(sheet.open&&photos.send('saved',visit))photoPreview(record,true);}
+    catch{if(!sheet.open||!photos.send('failed',visit))return;button.disabled=hang.disabled=false;feedback.textContent='Albüm kaydedilemedi. Fotoğrafı indirebilirsin.';}
   };
-  if(fromAlbum)$('#remix').onclick=()=>{checkpoint();recipe=readRecipe(record.recipe)||emptyRecipe();sheet.close();leaveCamera();update();};
+  if(fromAlbum)$('#remix').onclick=()=>{checkpoint();recipe=readRecipe(record.recipe)||emptyRecipe();selected=-1;chooseBrush(null);sheet.close();leaveCamera();update();};
   $('#share').onclick=async()=>{
     const link=recipeURL(record.recipe);
-    try{await navigator.clipboard.writeText(link);$('.feedback').textContent='Bağlantı kopyalandı.';}
-    catch{const input=document.createElement('input');input.readOnly=true;input.value=link;$('.feedback').replaceChildren(input);input.select();}
+    try{await navigator.clipboard.writeText(link);feedback.textContent='Bağlantı kopyalandı.';}
+    catch{const input=document.createElement('input');input.readOnly=true;input.value=link;feedback.replaceChildren(input);if(feedback.isConnected&&sheet.open)input.select();}
   };
 }
 function publishPhoto(record,fromAlbum){
-  dialog('Panoya as','<form id="hang-form"><img class="print" alt="Asılacak sofra"><label>Tarif adı<input id="hang-title" maxlength="48" required autocomplete="off"></label><p>Tarifin herkese açık olur. Diğer oyuncular oy verebilir ve bir kopyasını hazırlayabilir.</p><div class="buttons"><button type="submit" class="primary">Panoya as</button><button type="button" id="hang-back">Geri</button></div><p class="feedback" role="status"></p></form>');
+  dialog('Panoya as','<form id="hang-form"><img class="print" alt="Asılacak sofra"><label>Tarif adı<input id="hang-title" maxlength="48" required autocomplete="off"></label><p>Tarifin herkese açık olur. Diğer oyuncular oy verebilir ve bir kopyasını hazırlayabilir.</p><div class="buttons"><button type="submit" class="primary">Panoya as</button><button type="button" id="hang-back">Geri</button></div><p class="feedback" role="status"></p></form>',true);
   $('.print').src=snapshot;
   const form=$('#hang-form'),name=$('#hang-title'),submit=form.querySelector('[type=submit]'),feedback=form.querySelector('.feedback');
   name.value=record.recipe.baseRemoved?'Kahvaltı tabağım':breads[record.recipe.bread||'simit'].name+' sofram';
-  $('#hang-back').onclick=()=>photoPreview(record,fromAlbum);
+  $('#hang-back').onclick=()=>{if(photos.send('back'))photoPreview(record,fromAlbum);};
   form.onsubmit=async event=>{
-    event.preventDefault();if(submit.disabled)return;
+    event.preventDefault();const visit=photos.send('publish');if(!visit)return;
     submit.disabled=true;feedback.textContent='Asılıyor…';
     try{
       const {recipe,angle,pose,frame}=record;
       const result=await boardWrite('',{title:name.value,recipe,angle,pose,frame});
-      if(!form.isConnected||!sheet.open)return;
-      dialog(result.created?'Tarifin panoda':'Bu tarif zaten panoda','<div class="buttons"><a id="see-post" class="primary">Panoda gör</a><button id="copy-post">Bağlantıyı kopyala</button><button id="copy-removal">Özel kaldırma bağlantısı</button></div><p class="feedback" role="status"></p>');
+      if(!sheet.open||!photos.send('published',visit))return;
+      dialog(result.created?'Tarifin panoda':'Bu tarif zaten panoda','<div class="buttons"><a id="see-post" class="primary">Panoda gör</a><button id="copy-post">Bağlantıyı kopyala</button><button id="copy-removal">Özel kaldırma bağlantısı</button></div><p class="feedback" role="status"></p>',true);
+      const status=$('.feedback');
       const url=publicURL(result.id);$('#see-post').href=url;
-      function copy(link,message){return async()=>{try{await navigator.clipboard.writeText(link);$('.feedback').textContent=message;}catch{$('.feedback').textContent=link;}};}
+      function copy(link,message){return async()=>{try{await navigator.clipboard.writeText(link);status.textContent=message;}catch{status.textContent=link;}};}
       $('#copy-post').onclick=copy(url,'Bağlantı kopyalandı.');
       $('#copy-removal').onclick=copy(url+'#kaldir='+result.removeKey,'Özel bağlantı kopyalandı. Bu bağlantıyı sakla; yalnızca tarifi kaldırmak için kullanılır.');
-    }catch(error){feedback.textContent=error.message;submit.disabled=false;}
+    }catch(error){if(sheet.open&&photos.send('failed',visit)){feedback.textContent=error.message;submit.disabled=false;}}
   };
 }
 $('#shutter').onclick=async()=>{
   if(!board||gesture)return;
   if(mode==='edit'){camera(board.hasEditPose()?'free':'tilt');return;}
-  const output=board.capture(),record={recipe:structuredClone(recipe),angle,pose:board.pose(),frame:board.frame(),date:Date.now()};
-  record.blob=await toBlob(output,'image/png');const thumb=document.createElement('canvas');thumb.width=thumb.height=128;thumb.getContext('2d').drawImage(output,0,0,128,128);record.thumb=thumb.toDataURL('image/webp',.72);
-  if(mode==='camera')photoPreview(record);
+  const visit=photos.send('capture');if(!visit)return;
+  try{
+    const output=board.capture(),record={recipe:structuredClone(recipe),angle,pose:board.pose(),frame:board.frame(),date:Date.now()};
+    record.blob=await toBlob(output,'image/png');
+    if(photos.visit!==visit)return;
+    const thumb=document.createElement('canvas');thumb.width=thumb.height=128;
+    thumb.getContext('2d').drawImage(output,0,0,128,128);record.thumb=thumb.toDataURL('image/webp',.72);
+    if(photos.send('encoded',visit))photoPreview(record);
+  }catch{
+    if(photos.send('failed',visit))hint('Fotoğraf çekilemedi. Tekrar dene.');
+  }
 };
 $('#album').onclick=async()=>{
   dialog('Albümüm','<div class="gallery"></div><p class="feedback"></p>');
@@ -700,7 +704,7 @@ $('#album').onclick=async()=>{
     if(!records.length)$('.feedback').textContent='İlk fotoğrafını çek ve Sakla’ya bas.';
     for(const r of records.reverse()){
       const b=document.createElement('button'),img=new Image();img.src=r.thumb;img.alt='Sofra '+r.id;
-      const label=document.createElement('small');label.textContent='№ '+r.id;b.append(img,label);b.onclick=()=>photoPreview(r,true);gallery.append(b);
+      const label=document.createElement('small');label.textContent='№ '+r.id;b.append(img,label);b.onclick=()=>{if(photos.send('albumPhoto'))photoPreview(r,true);};gallery.append(b);
     }
   }catch{if(gallery.isConnected)$('.feedback').textContent='Bu tarayıcıda albüm kullanılamıyor.';}
   if(read('sofra.table.v1') && gallery.isConnected){const p=document.createElement('p'),a=document.createElement('a');a.href='./table.html';a.textContent='Önceki kahvaltı masam';p.append(a);$('#sheet-content').append(p);}
@@ -748,7 +752,7 @@ document.addEventListener('keydown',e=>{
   if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
 });
 new ResizeObserver(()=>requestAnimationFrame(showHandle)).observe(stage);
-window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
+window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,photo:photos.state,gesture:gesture?.kind??null,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
 window.advanceTime=ms=>board?.step(ms);
 function openSharedLink(){
   if(!board)return;

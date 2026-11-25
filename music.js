@@ -1,3 +1,5 @@
+import {workflow,radioEdges} from './workflows.js';
+
 // These are the CC BY recordings from Alleys of Istanbul. Only the current
 // track gets a media URL, so the other three consume no bandwidth.
 const tracks = [
@@ -41,9 +43,11 @@ export function mountMusic(initiallyMuted, saveMute) {
   const name = document.querySelector('#track-name');
   const time = document.querySelector('#music-time');
   const saved = readBookmark();
-  let index = saved.index, heldPosition = saved.seconds, wanted = false;
+  const playback = workflow(radioEdges);
+  const wantsMusic = () => playback.state === 'requested' || playback.state === 'playing';
+  let index = saved.index, heldPosition = saved.seconds;
   let pendingPosition = true, useOriginal = false, failedTracks = 0, lastWrite = 0;
-  let lastBookmark = JSON.stringify({file:tracks[index].file, seconds:heldPosition, paused:!wanted});
+  let lastBookmark = JSON.stringify({file:tracks[index].file, seconds:heldPosition, paused:!wantsMusic()});
   audio.volume = 0.28;
   audio.muted = initiallyMuted;
 
@@ -55,7 +59,7 @@ export function mountMusic(initiallyMuted, saveMute) {
   }
   function remember() {
     heldPosition = position();
-    const bookmark = JSON.stringify({file: tracks[index].file, seconds: heldPosition, paused: !wanted});
+    const bookmark = JSON.stringify({file: tracks[index].file, seconds: heldPosition, paused: !wantsMusic()});
     lastWrite = performance.now();
     if (bookmark === lastBookmark) return;
     try {
@@ -102,9 +106,13 @@ export function mountMusic(initiallyMuted, saveMute) {
     audio.src = useOriginal ? commons + path : commons + 'transcoded/' + path + '/' + filename(track) + '.mp3';
   }
   function start() {
-    if (!wanted || document.hidden) return;
+    if (document.hidden) return;
+    const visit = playback.send('attempt');
+    if (!visit) return;
     if (!audio.hasAttribute('src') || audio.error) loadTrack();
-    audio.play().catch(show);
+    audio.play().catch(() => {
+      if (!audio.error && playback.send('denied', visit)) { remember(); show(); }
+    });
     show();
   }
   function seekTo(seconds) {
@@ -117,7 +125,7 @@ export function mountMusic(initiallyMuted, saveMute) {
     showTime();
   }
   function changeTrack(direction = 1) {
-    const continuePlaying = wanted && (!audio.muted || audio.hasAttribute('src'));
+    const continuePlaying = wantsMusic() && (!audio.muted || audio.hasAttribute('src'));
     index = (index + direction + tracks.length) % tracks.length;
     heldPosition = tracks[index].cue;
     pendingPosition = true;
@@ -141,24 +149,28 @@ export function mountMusic(initiallyMuted, saveMute) {
   audio.addEventListener('timeupdate', () => {
     if (!pendingPosition && audio.readyState >= 1) {
       heldPosition = audio.currentTime;
-      if (wanted && performance.now() - lastWrite >= 4000) remember();
+      if (wantsMusic() && performance.now() - lastWrite >= 4000) remember();
     }
     showTime();
   });
   audio.addEventListener('play', () => {
-    if (!wanted || document.hidden) pauseMusic();
+    if (!wantsMusic() || document.hidden) pauseMusic();
   });
-  audio.addEventListener('playing', () => { failedTracks = 0; show(); });
+  audio.addEventListener('playing', () => {
+    if (!wantsMusic() || document.hidden) { pauseMusic(); return; }
+    if (!audio.paused) playback.send('playing');
+    failedTracks = 0; show();
+  });
   audio.addEventListener('pause', show);
-  audio.addEventListener('ended', () => { if (wanted) changeTrack(); });
+  audio.addEventListener('ended', () => { if (wantsMusic()) changeTrack(); });
   audio.addEventListener('error', () => {
-    if (!wanted || !audio.error || !audio.hasAttribute('src')) return;
+    if (!wantsMusic() || !audio.error || !audio.hasAttribute('src')) return;
     if (!useOriginal) {
       useOriginal = true;loadTrack();start();
     } else if (++failedTracks < tracks.length) {
       changeTrack();
     } else {
-      wanted = false;pendingPosition = true;
+      playback.send('exhausted');pendingPosition = true;
       audio.removeAttribute('src');audio.load();remember();show();
     }
   });
@@ -166,7 +178,9 @@ export function mountMusic(initiallyMuted, saveMute) {
     if (!audio.paused) {
       pauseMusic();return;
     }
-    wanted = true;failedTracks = 0;
+    if (document.hidden) return;
+    if (!wantsMusic()) playback.send('play');
+    failedTracks = 0;
     if (!audio.hasAttribute('src')) useOriginal = false;
     if (position() >= duration()) changeTrack();
     else start();
@@ -175,12 +189,12 @@ export function mountMusic(initiallyMuted, saveMute) {
   mute.onclick = () => {
     audio.muted = !audio.muted;
     saveMute(audio.muted);
-    if (!audio.muted && wanted && audio.paused) start();
+    if (!audio.muted && wantsMusic() && audio.paused) start();
     show();
   };
   function pauseMusic() {
-    if (!wanted && audio.paused) return;
-    wanted = false;
+    if (playback.state === 'idle' && audio.paused) return;
+    playback.send('dismiss');
     audio.pause();
     remember();
     show();
@@ -190,6 +204,6 @@ export function mountMusic(initiallyMuted, saveMute) {
   show();
   return {
     get muted() { return audio.muted; },
-    state() { return { track: tracks[index].title, playing: !audio.paused, muted: audio.muted, seconds: Math.floor(position()) }; }
+    state() { return { phase: playback.state, track: tracks[index].title, playing: !audio.paused, muted: audio.muted, seconds: Math.floor(position()) }; }
   };
 }

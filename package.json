@@ -4,7 +4,8 @@
   "scripts": {
     "build": "node build.mjs",
     "start": "wrangler dev --local",
-    "prestart": "wrangler d1 migrations apply sofra-pano --local"
+    "prestart": "wrangler d1 migrations apply sofra-pano --local",
+    "verify:models": "node formal/check.mjs"
   },
   "dependencies": {
     "three": "0.187.0"

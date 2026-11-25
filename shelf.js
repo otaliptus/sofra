@@ -1,3 +1,4 @@
+import {finishGesture} from './workflows.js';
 import { foods } from './model.js';
 import { assetURL } from './asset-url.js';
 
@@ -63,17 +64,17 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     const item=event.target.closest('.food');
     if(!item||event.button!==0||gesture)return;
     ignoreClick=false;
-    gesture={id:event.pointerId,item,x:event.clientX,y:event.clientY,left:strip.scrollLeft,mode:null,ghost:null};
+    gesture={id:event.pointerId,item,x:event.clientX,y:event.clientY,left:strip.scrollLeft,kind:'press',ghost:null};
     item.setPointerCapture(event.pointerId);
   });
   strip.addEventListener('pointermove',event=>{
     if(!gesture||event.pointerId!==gesture.id)return;
     const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y;
-    if(!gesture.mode){
+    if(gesture.kind==='press'){
       if(Math.max(Math.abs(dx),Math.abs(dy))<7)return;
-      gesture.mode=dy<0 && -dy>Math.abs(dx)*.8?'place':'scroll';
+      gesture.kind=dy<0 && -dy>Math.abs(dx)*.8?'place':'scroll';
     }
-    if(gesture.mode==='scroll'){
+    if(gesture.kind==='scroll'){
       if(event.pointerType==='mouse')strip.scrollLeft=gesture.left-dx;
       return;
     }
@@ -88,12 +89,12 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     gesture.ghost.style.top=event.clientY+'px';
   });
   function finish(event) {
-    if(!gesture||gesture.id!==event.pointerId)return;
-    const {mode,item,ghost}=gesture;
+    const outcome=finishGesture(gesture,'shelf',event);if(!outcome)return;
+    const {kind,item,ghost}=gesture;
     gesture=null;ghost?.remove();
     if(onHover)onHover(null);
-    ignoreClick=!!mode||event.type==='pointercancel';
-    if(mode==='place'&&event.type==='pointerup'){
+    ignoreClick=kind!=='press'||outcome==='cancel';
+    if(kind==='place'&&outcome==='commit'){
       const b=board.getBoundingClientRect();
       if(event.clientX>=b.left && event.clientX<=b.right && event.clientY>=b.top && event.clientY<=b.bottom)
         onDrop(item.dataset.food,event.clientX-b.left,event.clientY-b.top);

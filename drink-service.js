@@ -1,3 +1,4 @@
+import {finishGesture} from './workflows.js';
 import * as THREE from './node_modules/three/build/three.module.js';
 
 let studio;
@@ -101,7 +102,7 @@ export function serveDrink(sheet,rig,kind,initialPercent,onPrepare){
     const distance=lid?p.distanceTo(handle):Math.hypot(p.x-start.x,(p.y-start.y)*.52);
     if(distance>Math.max(25,stage.clientHeight*.08))return;
     if(animating){cancelAnimationFrame(frame);animating=false;value=0;offset.set(0,0,0);draw();}
-    active={id:e.pointerId,p,handle,value};stage.setPointerCapture(e.pointerId);controls();e.preventDefault();
+    active={kind:lid?'lid':'straw',id:e.pointerId,p,handle,value};stage.setPointerCapture(e.pointerId);controls();e.preventDefault();
   }
   function move(e){
     if(active?.id!==e.pointerId)return;
@@ -124,9 +125,9 @@ export function serveDrink(sheet,rig,kind,initialPercent,onPrepare){
     draw();
   }
   function finish(e){
-    if(active?.id!==e.pointerId)return;
+    const outcome=finishGesture(active,'drink',e);if(!outcome)return;
     if(!alive||!sheet.open){active=null;return;}
-    const released=e.type==='pointerup';
+    const released=outcome==='commit';
     if(released)move(e);
     active=null;
     if(lid){
@@ -143,11 +144,11 @@ export function serveDrink(sheet,rig,kind,initialPercent,onPrepare){
   if(slider){
     slider.oninput=()=>{value=slider.valueAsNumber/100;draw();};
     slider.onchange=()=>{if(sliderPointer===null)commitPeel();};
-    slider.onpointerdown=e=>{if(e.button===0){sliderPointer=e.pointerId;slider.setPointerCapture(e.pointerId);}};
+    slider.onpointerdown=e=>{if(e.button===0&&sliderPointer===null){sliderPointer={kind:'slider',id:e.pointerId};slider.setPointerCapture(e.pointerId);}};
     slider.onpointerup=slider.onpointercancel=slider.onlostpointercapture=e=>{
-      if(sliderPointer!==e.pointerId)return;
+      const outcome=finishGesture(sliderPointer,'slider',e);if(!outcome)return;
       sliderPointer=null;
-      if(e.type==='pointerup')commitPeel();else {value=saved/100;draw();}
+      if(outcome==='commit')commitPeel();else {value=saved/100;draw();}
     };
   }
   back.onclick=()=>sheet.close();
