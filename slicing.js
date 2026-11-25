@@ -1,3 +1,4 @@
+import {art} from './board-art.js';
 import { pantry, sliceThickness, wholeCuts } from './recipe.js?v=slices';
 
 // Use the same cutouts as the playable pieces to show the cut spacing and edge.
@@ -10,7 +11,7 @@ export function chooseSlice(piece,room,{sheet,dialog,apply}){
     '<div class="cut-footer"><span role="status"></span><button class="cut-apply" type="button">'+(cut?'Kes':'Uygula')+'</button></div>');
   const board=sheet.querySelector('.cut-board'),canvas=board.firstElementChild,ctx=canvas.getContext('2d');
   const status=sheet.querySelector('.cut-footer span'),button=sheet.querySelector('.cut-apply');
-  const image=id=>document.querySelector('[data-food="'+id+'"] img');
+  const image=id=>art[pantry[id].asset||id];
   const face=image(food),whole=image(piece.food);
   face.loading=whole.loading='eager';
   const edge=document.createElement('canvas');edge.width=220;edge.height=220;

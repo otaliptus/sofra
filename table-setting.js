@@ -24,32 +24,16 @@ export function tableHeight(x,z) {
   return top.at(-1)[1];
 }
 
-export function setTable(scene, clothMaps, plateMap) {
+export function setTable(scene, getMap, plateMap) {
   const size=48;
-  for(const [id,map] of Object.entries(clothMaps)){
-    if(id==='gazete')continue;
-    const width=cloths[id].width,height=width*map.image.height/map.image.width;
-    map.wrapS=map.wrapT=THREE.RepeatWrapping;
-    map.repeat.set(size/width,size/height);
-    map.center.set(.5,.5);
-    map.rotation=.105;
-  }
-  const cloth=new THREE.Mesh(new THREE.PlaneGeometry(size,size),new THREE.MeshLambertMaterial({map:clothMaps.kareli}));
+  const cloth=new THREE.Mesh(new THREE.PlaneGeometry(size,size),new THREE.MeshLambertMaterial());
   cloth.rotation.x=-Math.PI/2;
   cloth.position.y=clothHeight;
   cloth.receiveShadow=true;
   scene.add(cloth);
 
   // A single open issue has physical edges, including in low-angle photos.
-  const print=clothMaps.gazete, width=cloths.gazete.width;
-  const paper=new THREE.Mesh(new THREE.PlaneGeometry(width,width*print.image.height/print.image.width),
-    new THREE.MeshLambertMaterial({map:print}));
-  paper.rotation.set(-Math.PI/2,0,-.058);
-  paper.position.set(-.07,clothHeight,.27);
-  paper.castShadow=paper.receiveShadow=true;
-  paper.visible=false;
-  scene.add(paper);
-
+  let paper,activeCloth;
   const profile=[...underside,...top.slice().reverse()];
   const geometry=new THREE.LatheGeometry(profile.map(([r,y])=>new THREE.Vector2(r,y)),160);
   const {position,uv}=geometry.attributes;
@@ -63,8 +47,21 @@ export function setTable(scene, clothMaps, plateMap) {
   plate.receiveShadow=true;
   scene.add(plate);
   return {plate,setCloth(id){
-    paper.visible=id==='gazete';
-    cloth.position.y=paper.visible?clothHeight-.004:clothHeight;
-    cloth.material.map=clothMaps[paper.visible?'kareli':id];
+    if(id===activeCloth)return;
+    const newspaper=id==='gazete';
+    if(newspaper&&!paper){
+      const print=getMap('gazete'),width=cloths.gazete.width;
+      paper=new THREE.Mesh(new THREE.PlaneGeometry(width,width*print.image.height/print.image.width),
+        new THREE.MeshLambertMaterial({map:print}));
+      paper.rotation.set(-Math.PI/2,0,-.058);paper.position.set(-.07,clothHeight,.27);
+      paper.castShadow=paper.receiveShadow=true;scene.add(paper);
+    }
+    if(paper)paper.visible=newspaper;
+    cloth.position.y=newspaper?clothHeight-.004:clothHeight;
+    const fabric=newspaper?'kareli':id,map=getMap(fabric),width=cloths[fabric].width;
+    map.wrapS=map.wrapT=THREE.RepeatWrapping;
+    map.repeat.set(size/width,size/(width*map.image.height/map.image.width));
+    map.center.set(.5,.5);map.rotation=.105;
+    cloth.material.map=map;activeCloth=id;
   }};
 }

@@ -1,5 +1,5 @@
 import * as THREE from './node_modules/three/build/three.module.js';
-import { assetURL } from './asset-url.js';
+import { art, prepareArt, recipeArt } from './board-art.js';
 import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
 import { createDrinkFactory } from './drinks.js?v=perf';
@@ -7,7 +7,7 @@ import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=gazete';
 import { aimCamera, composePhoto, fitEditorCamera, presetPose } from './photo-camera.js';
 import { createCoating } from './food-marks.js?v=salca';
-import { breads, cloths, ingredients, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
+import { breads, cloths, emptyRecipe, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
 import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=slices';
 
@@ -18,9 +18,6 @@ const ray=new THREE.Raycaster(), point3=new THREE.Vector3();
 const canvas2d=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
 function texture(source){
   const map=new THREE.CanvasTexture(source);map.colorSpace=THREE.SRGBColorSpace;map.anisotropy=4;return map;
-}
-async function loadImage(asset){
-  const img=new Image();img.src=assetURL(asset);await img.decode();return img;
 }
 function outline(image,w=120){
   const h=Math.max(12,Math.round(w*image.height/image.width));
@@ -36,7 +33,7 @@ function outline(image,w=120){
 // Trace the alpha contour in texture space. Each contour segment follows the same
 // rounded profile, including the inner edge of the simit.
 function sideGeometry(mask,width,height,depth,bread,topY,crown){
-  const positions=[],colors=[],uvs=[],normals=[],{w,h,alpha}=mask;
+  const positions=[],colors=[],uvs=[],normals=[],indices=[],{w,h,alpha}=mask;
   const rings=crown ? [[1,0],[.7,-.001],[.16,-.001],[0,0]]
               : bread ? [[1,0],[.86,-depth*.055],[.64,-depth*.08],[.42,depth*.02],[.2,depth*.18],[.07,depth*.37],[0,depth*.60]]
                     : [[1,0],[.76,-.001],[.23,.001],[0,Math.min(.005,depth*.3)]];
@@ -57,14 +54,16 @@ function sideGeometry(mask,width,height,depth,bread,topY,crown){
       let a=cross[k],b=cross[k+1];
       if((b.v-a.v)*height*(a.nx+b.nx)<(b.u-a.u)*width*(a.nz+b.nz))[a,b]=[b,a];
       if(Math.abs(a.angle-b.angle)>.5){if(a.angle<b.angle)a.angle++;else b.angle++;}
-      for(let band=0;band<rings.length-1;band++){
-        for(const [v,index] of [[a,band],[a,band+1],[b,band+1],[a,band],[b,band+1],[b,band]]){
-          const [fraction,inset]=rings[index],{u,nx,nz}=v;
-          positions.push((u-.5)*width+nx*inset,fraction*topY(u,v.v),(v.v-.5)*height+nz*inset);
+      const start=positions.length/3;
+      for(const v of [a,b]){
+        const {u,nx,nz}=v,heightAtEdge=topY(u,v.v);
+        for(let index=0;index<rings.length;index++){
+          const [fraction,inset]=rings[index];
+          positions.push((u-.5)*width+nx*inset,fraction*heightAtEdge,(v.v-.5)*height+nz*inset);
           const prev=rings[Math.max(0,index-1)],next=rings[Math.min(rings.length-1,index+1)];
           const slope=(next[1]-prev[1])/((next[0]-prev[0])*depth);
-          const normal=new THREE.Vector3(-nx,slope,-nz).normalize();
-          normals.push(normal.x,normal.y,normal.z);
+          const length=Math.sqrt(nx*nx+slope*slope+nz*nz)||1;
+          normals.push(-nx/length,slope/length,-nz/length);
           const shade=.87+.13*fraction;
           colors.push(shade,shade,shade);
           if(bread)uvs.push(v.angle,fraction);
@@ -74,9 +73,13 @@ function sideGeometry(mask,width,height,depth,bread,topY,crown){
           }
         }
       }
+      for(let band=0;band<rings.length-1;band++){
+        const left=start+band,right=left+rings.length;
+        indices.push(left,left+1,right+1,left,right+1,right);
+      }
     }
   }
-  const geo=new THREE.BufferGeometry();
+  const geo=new THREE.BufferGeometry();geo.setIndex(indices);
   geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
   geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
@@ -168,14 +171,8 @@ function relative(p,x,z){
   return [localX(p,dx*c-dz*s),dx*s+dz*c];
 }
 
-function loadBoardArt(){
-  const ids=new Set([...Object.values(cloths).map(c=>c.asset),'kahvalti-tabagi','tea-saucer','drink-art','milk-art','cay','sesame-crust','pogaca-crust','acma-crust','tas-ekmek-crust',...Object.values(breads).flatMap(b=>[b.asset,b.crown]),
-    ...ingredients.filter(f=>f.kind==='topping'&&!f.drink).map(f=>f.asset||f.id),
-    ...ingredients.filter(f=>f.paste).map(f=>'smear-'+f.id),'smear-cream','smear-jam','servings','serving-relief']);
-  return Promise.all(Array.from(ids).map(async id=>[id,await loadImage(id)])).then(Object.fromEntries);
-}
-export async function createBoard(canvas){
-  const loading=loadBoardArt();
+export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
+  const loading=prepareArt(recipeArt(initial));
   const renderer=new THREE.WebGLRenderer({canvas,alpha:false,antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
@@ -189,38 +186,44 @@ export async function createBoard(canvas){
   Object.assign(sun.shadow.camera,{left:-1.8,right:1.8,top:1.8,bottom:-1.8,near:.1,far:12});sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.00014;sun.shadow.normalBias=.0005;sun.shadow.radius=2.5;
   scene.add(sun,new THREE.AmbientLight(0xffffff,1.55));
-  const art=await loading;
-  teaImages.cay=art.cay;
-
-  const clothMaps=Object.fromEntries(Object.entries(cloths).map(([id,c])=>[id,texture(art[c.asset])]));
-  const {plate,setCloth}=setTable(scene,clothMaps,texture(art['kahvalti-tabagi']));
-  const crusts=Object.fromEntries(Object.keys(breads).map(id=>{
-    const map=texture(art[id==='simit'?'sesame-crust':id+'-crust']);map.wrapS=THREE.RepeatWrapping;
-    if(id!=='simit')map.repeat.x=3;
-    return [id,map];
-  }));
+  await loading;
+  const maps=new Map();
+  function assetTexture(id){
+    if(!maps.has(id))maps.set(id,texture(art[id]));
+    return maps.get(id);
+  }
+  const {plate,setCloth}=setTable(scene,id=>assetTexture(cloths[id].asset),assetTexture('kahvalti-tabagi'));
+  function crustFor(id){
+    const map=assetTexture(id==='simit'?'sesame-crust':id+'-crust');
+    map.wrapS=THREE.RepeatWrapping;if(id!=='simit')map.repeat.x=3;
+    return map;
+  }
   const loafCache=new Map(),crownCache=new Map(),coatings=new Map();
   let bread,breadId,lid;
   function activateBread(id='simit'){
     if(breadId===id)return;
     if(bread)bread.group.visible=false;
     if(!loafCache.has(id)){
-      const spec=breads[id],food=makeFood(art[spec.asset],1,spec.depth,{crust:crusts[id],ring:id==='simit'});
+      const spec=breads[id],food=makeFood(art[spec.asset],1,spec.depth,{crust:crustFor(id),ring:id==='simit'});
       scene.add(food.group);loafCache.set(id,food);
     }
     bread=loafCache.get(id);breadId=id;bread.group.visible=true;
   }
   const blanks={};
-  const makeDrink=createDrinkFactory(art['drink-art'],art['milk-art']);
+  const drinkFactories=new Map();
   // Shelf halves and the movable lid use the same undeformed bread model.
   function foodModel(id){
     if(blanks[id])return blanks[id];
     const item=pantry[id];
-    if(id==='cay')blanks[id]=createTeaService(renderer,art['tea-saucer']);
-    else if(item.drink)blanks[id]=makeDrink(id);
+    if(id==='cay'){teaImages.cay=art.cay;blanks[id]=createTeaService(renderer,art['tea-saucer']);}
+    else if(item.drink){
+      const atlas=id.endsWith('-sut')?'milk-art':'drink-art';
+      if(!drinkFactories.has(atlas))drinkFactories.set(atlas,createDrinkFactory(art['drink-art'],art['milk-art']));
+      blanks[id]=drinkFactories.get(atlas)(id);
+    }
     else if(item.bread){
       const b=breads[item.bread],ring=item.bread==='simit';
-      blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crusts[item.bread],cutFace:art[b.asset],ring,flex:ring});
+      blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crustFor(item.bread),cutFace:art[b.asset],ring,flex:ring});
     }else blanks[id]=makeFood(art[item.asset||id],item.size,item.depth,{
       dome:id.endsWith('-olive'),rounded:id==='avokado'||id==='yogurt',egg:id==='fried-egg'||id==='egg-slice',
       flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(id)
@@ -242,9 +245,8 @@ export async function createBoard(canvas){
     }
     return sliceModels.get(key);
   }
-  function pieceGroup(p){
-    const ref=modelFor(p);
-    return (ref.forOpening?.(openingPercent(p))??ref.forFill?.(p.dem,p.water)??ref.group).clone();
+  function pieceTemplate(p,ref=modelFor(p)){
+    return ref.forOpening?.(openingPercent(p))??ref.forFill?.(p.dem,p.water)??ref.group;
   }
   let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,ghostModel=null,hover=null,view=null,raf=0,clock=0;
   const placed=[];
@@ -255,7 +257,9 @@ export async function createBoard(canvas){
   const landing=new Map();
 
   const photoFocus=createPhotoFocus(renderer);
+  let cameraFrame=0;
   function render(gate=framePixels*renderer.getPixelRatio(),shadowsChanged=true){
+    if(cameraFrame){cancelAnimationFrame(cameraFrame);cameraFrame=0;}
     if(shadowsChanged)renderer.shadowMap.needsUpdate=true;
     if(view)photoFocus.render(scene,photoCamera,photoSetup,gate);
     else renderer.render(scene,editorCamera);
@@ -357,11 +361,13 @@ export async function createBoard(canvas){
     photoLens=id==='free'?'tilt':id;
     if(saved?.pose)orbit={...saved.pose};
     if(saved?.frame)editorAspect=saved.frame.aspect;
-    refreshCover();
+    else if(printOnly)editorAspect=canvas.clientWidth/canvas.clientHeight||1;
+    placeCover();
     if(saved?.frame){
       const {target,distance,tan}=saved.frame;
-      photoSetup={target:new THREE.Vector3(...target),distance,tan};resize();
-    }
+      photoSetup={target:new THREE.Vector3(...target),distance,tan};
+    }else if(view)photoSetup=composePhoto(subjectPoints(),orbit,photoLens);
+    if(printOnly)cameraPosition();else resize();
   }
   function refreshCover(){
     placeCover();
@@ -371,7 +377,8 @@ export async function createBoard(canvas){
   function rotate(dx,dy){
     orbit={yaw:(orbit.yaw-dx)%(Math.PI*2),elevation:clamp(orbit.elevation+dy,.20,Math.PI/2)};
     if(view)view='free';else editPose={...orbit};
-    cameraPosition();render(undefined,false);
+    cameraPosition();
+    if(!cameraFrame)cameraFrame=requestAnimationFrame(()=>{cameraFrame=0;render(undefined,false);});
   }
   function setRay(clientX,clientY){
     const b=canvas.getBoundingClientRect();ray.setFromCamera({x:(clientX-b.left)/b.width*2-1,y:1-(clientY-b.top)/b.height*2},camera);
@@ -473,7 +480,20 @@ export async function createBoard(canvas){
     else pose=crownPlacement(mode,bread,lid,recipe.pieces,modelFor);
     settleCover(pose,mode==='half'||mode==='custom' ? .48 : .28);
   }
-  function settleCover({x,z,yaw},maxSlope){
+  function applyCrownShape(){
+    const bend=lid.bend;
+    if(bend===(lid.appliedBend??null))return;
+    for(const mesh of lid.group.children){
+      const vertices=mesh.geometry.attributes.position;
+      const original=mesh.userData.unbentY??=Float32Array.from({length:vertices.count},(_,i)=>vertices.getY(i));
+      for(let i=0;i<vertices.count;i++){
+        vertices.setY(i,original[i]+(bend?bend(vertices.getX(i),vertices.getZ(i)):0));
+      }
+      vertices.needsUpdate=true;mesh.geometry.boundingBox=null;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
+    }
+    lid.appliedBend=bend;
+  }
+  function settleCover({x,z,yaw},maxSlope,deferMesh=false){
     if(breadId==='simit'){
       // The sliced ring yields over a filling rather than balancing the whole
       // crown on the highest olive. Reuse the topping contact solver at a
@@ -485,17 +505,8 @@ export async function createBoard(canvas){
       // A ring lying flat on the cloth keeps the original mesh, including
       // through repeated ingredient edits and drags around the parked spot.
       const bend=onCloth?null:drape({x,z,a:yaw},recipe.pieces.length,0,lid,.32);
-      if(bend||lid.bend){
-        for(const mesh of lid.group.children){
-          const vertices=mesh.geometry.attributes.position;
-          const original=mesh.userData.unbentY??=Float32Array.from({length:vertices.count},(_,i)=>vertices.getY(i));
-          for(let i=0;i<vertices.count;i++){
-            vertices.setY(i,original[i]+(bend?bend(vertices.getX(i),vertices.getZ(i)):0));
-          }
-          vertices.needsUpdate=true;mesh.geometry.boundingBox=null;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
-        }
-      }
       lid.bend=bend;lid.group.position.set(x,onCloth?clothHeight+.00085:-.00035,z);lid.group.rotation.set(0,yaw,0);
+      if(!deferMesh)applyCrownShape();
       return;
     }
     const c=Math.cos(yaw),s=Math.sin(yaw);
@@ -552,8 +563,9 @@ export async function createBoard(canvas){
       const dx=at.x-held.x,dz=at.z-held.z;
       if(Math.hypot(dx,dz)<.0008)break;
       const pose=coverPose();
-      settleCover(boundedCoverPose({x:pose.x+dx,z:pose.z+dz,yaw:pose.yaw}),.48);
+      settleCover(boundedCoverPose({x:pose.x+dx,z:pose.z+dz,yaw:pose.yaw}),.48,true);
     }
+    if(breadId==='simit')applyCrownShape();
     render();
   }
   function drape(p,index,base,ref=modelFor(p),stiff=p.food===breads.simit.crown ? .32 : p.food==='kasar' ? .50 : p.food.includes('onion') ? .70 : .9){
@@ -593,16 +605,23 @@ export async function createBoard(canvas){
       return near*(1-b)+far*b+.0012-base;
     };
   }
-  function conform(group,offset){
-    for(const mesh of group.children){
-      mesh.geometry=mesh.geometry.clone();
-      const vertices=mesh.geometry.attributes.position;
-      for(let i=0;i<vertices.count;i++)vertices.setY(i,vertices.getY(i)+offset(vertices.getX(i),vertices.getZ(i)));
+  function conform(group,template,offset){
+    if(!offset&&!group.userData.draped)return;
+    for(let i=0;i<template.children.length;i++){
+      const mesh=group.children[i],base=template.children[i].geometry;
+      if(!offset){mesh.geometry.dispose();mesh.geometry=base;continue;}
+      if(mesh.geometry===base)mesh.geometry=base.clone();
+      const vertices=mesh.geometry.attributes.position,original=base.attributes.position;
+      for(let j=0;j<vertices.count;j++)vertices.setY(j,original.getY(j)+offset(original.getX(j),original.getZ(j)));
       vertices.needsUpdate=true;mesh.geometry.boundingBox=null;
-      if(mesh===group.children[0])mesh.geometry.computeVertexNormals();
+      if(i===0)mesh.geometry.computeVertexNormals();
       mesh.geometry.computeBoundingSphere();
     }
-    group.userData.draped=true;
+    group.userData.draped=!!offset;
+  }
+  function releaseNode(node){
+    scene.remove(node);
+    if(node.userData.draped)for(const mesh of node.children)mesh.geometry.dispose();
   }
   function sync(r,settle=false,fitView=true){
     for(const [piece] of landing){
@@ -623,11 +642,14 @@ export async function createBoard(canvas){
       }
     }
     supportBread=base;breadMarks=marks;
+    const reusable=new Map();
     for(let i=keep;i<nodes.length;i++){
-      const n=nodes[i];
-      scene.remove(n);
-      const coating=n.children.at(-1);if(coating?.userData.coating)n.remove(coating);
-      if(n.userData.draped)for(const mesh of n.children)mesh.geometry.dispose();
+      const node=nodes[i],coating=node.children.at(-1);
+      if(coating?.userData.coating)node.remove(coating);
+      // Reinsert in recipe order to preserve transparent sorting. Keep GPU
+      // buffers alive during a drag even when the supports underneath change.
+      scene.remove(node);
+      reusable.set(placed[i].piece,{node,template:placed[i].template});
     }
     const present=new Set(r.pieces);
     for(const [p,coat] of coatings)if(!present.has(p)){
@@ -638,9 +660,11 @@ export async function createBoard(canvas){
     for(let i=keep;i<r.pieces.length;i++){
       const p=r.pieces[i],ref=modelFor(p),{height,stable,offset}=support(p,i,-1,true);
       if(settle&&!stable){r.pieces.splice(i--,1);slip(p);continue;}
-      const g=pieceGroup(p);
+      const template=pieceTemplate(p,ref),cached=reusable.get(p);
+      const g=cached?.template===template?cached.node:template.clone();
+      if(g===cached?.node)reusable.delete(p);
       const shape=ref.flex?drape(p,i,height):offset;
-      if(shape)conform(g,shape);
+      conform(g,template,shape);
       offsets.push(shape);
       heights.push(height);position(g,p,height);scene.add(g);nodes.push(g);paintPiece(p,i);
       const c=Math.cos(p.a),s=Math.sin(p.a);
@@ -648,8 +672,10 @@ export async function createBoard(canvas){
       // handles these samples. Image-backed food has a strict UV rectangle.
       const extentX=pantry[p.food].drink?Infinity:(Math.abs(c)*ref.width+Math.abs(s)*ref.height)/2;
       const extentZ=pantry[p.food].drink?Infinity:(Math.abs(s)*ref.width+Math.abs(c)*ref.height)/2;
-      placed.push({piece:p,ref,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
+      placed.push({piece:p,ref,template,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
     }
+    for(const {node} of reusable.values())releaseNode(node);
+    if(printOnly)return;
     placeCover();
     if(!view&&fitView){measureEditor();cameraPosition();}
     render();
@@ -702,7 +728,7 @@ export async function createBoard(canvas){
     const ref=p?modelFor(p):null;
     if(ghost&&(ghostModel!==ref||ghost.userData.opening!==opening)){scene.remove(ghost);ghost=null;}
     if(p){
-      if(!ghost){ghost=pieceGroup(p);ghostModel=ref;ghost.userData.opening=opening;scene.add(ghost);}
+      if(!ghost){ghost=pieceTemplate(p).clone();ghostModel=ref;ghost.userData.opening=opening;scene.add(ghost);}
       const coat=hide>=0&&coatings.get(recipe.pieces[hide]);
       if(ghost.children.at(-1)?.userData.coating && ghost.children.at(-1).geometry!==coat?.mesh.geometry)ghost.remove(ghost.children.at(-1));
       if(coat&&!ghost.children.at(-1)?.userData.coating)ghost.add(coat.mesh.clone());
@@ -712,12 +738,20 @@ export async function createBoard(canvas){
   }
   function slip(p){
 
-    const g=pieceGroup(p);position(g,p,.1);scene.add(g);
+    const g=pieceTemplate(p).clone();position(g,p,.1);scene.add(g);
     const length=Math.hypot(p.x,p.z)||1;
     falls.push({node:g,start:clock,sign:localX(p,1),x:p.x,z:p.z,dx:p.x/length,dz:p.z/length});run();
   }
   function capture(pixels=960){
     // Render the square gate at the actual export resolution, even on a phone.
+    if(printOnly){
+      if(canvas.width!==pixels||canvas.height!==pixels)renderer.setDrawingBufferSize(pixels,pixels,1);
+      photoCamera.aspect=1;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan));
+      photoCamera.updateProjectionMatrix();renderer.shadowMap.needsUpdate=true;
+      photoFocus.render(scene,photoCamera,photoSetup,pixels);
+      return canvas;
+    }
+    if(cameraFrame)render(undefined,false);
     const out=canvas2d(pixels,pixels),size=renderer.getSize(new THREE.Vector2()),ratio=renderer.getPixelRatio();
     const fov=photoCamera.fov,aspect=photoCamera.aspect;
     try{
@@ -732,10 +766,13 @@ export async function createBoard(canvas){
     }
     return out;
   }
-  resize(false);
-  new ResizeObserver(()=>{
-    if(canvas.clientWidth!==viewportWidth||canvas.clientHeight!==viewportHeight)resize();
-  }).observe(canvas);
+  if(printOnly)editorAspect=canvas.clientWidth/canvas.clientHeight||1;
+  else{
+    resize(false);
+    new ResizeObserver(()=>{
+      if(canvas.clientWidth!==viewportWidth||canvas.clientHeight!==viewportHeight)resize();
+    }).observe(canvas);
+  }
   return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
     coverPose,coverHandle,pickCover,covers,coverPlanePoint,dragCover,
     placeCut(piece,index){

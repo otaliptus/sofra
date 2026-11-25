@@ -28,6 +28,7 @@ export function editHistory(saved) {
       }
       top = state; selection = selected;
     },
+    peek() { return top === null ? null : {state:top,selected:selection}; },
     pop() {
       if (top === null) return null;
       const entry = {state: top, selected: selection};

@@ -1,6 +1,6 @@
 import {finishGesture} from './workflows.js';
 import { foods } from './model.js';
-import { assetURL } from './asset-url.js';
+import { assetURL, thumbnailURL } from './asset-url.js';
 
 export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
   const strip=document.querySelector('#foods');
@@ -17,7 +17,7 @@ export function mountShelf(board,onAdd,onDrop,items=foods,onHover=null) {
     if(food.kind&&food.kind!=='topping')button.setAttribute('aria-pressed','false');
     const image=new Image();
     if(food.kind&&i>=8)image.loading='lazy';
-    image.src=assetURL(food.kind==='sauce'?'bottle-'+food.id:food.asset||food.id);
+    image.src=(food.kind?thumbnailURL:assetURL)(food.kind==='sauce'?'bottle-'+food.id:food.asset||food.id);
     image.alt='';
     image.draggable=false;
     const name=document.createElement('span');

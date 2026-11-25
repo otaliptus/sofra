@@ -13,14 +13,15 @@ const scripts = (await readdir(root)).filter(name => name.endsWith('.js'));
 const artwork = (await readdir(join(root, 'assets')))
   .filter(name => name.endsWith('.webp'))
   .map(name => join('assets', name));
+const thumbnails=(await readdir(join(root,'assets/thumbs'))).map(file=>join('assets/thumbs',file));
 const renderer = [three + '/build/three.module.js', three + '/build/three.core.js', three + '/LICENSE'];
 
 await rm(output, { recursive: true, force: true });
-await mkdir(join(output, 'assets'), { recursive: true });
+await mkdir(join(output, 'assets/thumbs'), { recursive: true });
 await mkdir(join(output, three, 'build'), { recursive: true });
 const staticDir = join(output, 'static');
 await mkdir(staticDir);
-await Promise.all([...pages, ...scripts, ...artwork, ...renderer].map(
+await Promise.all([...pages, ...scripts, ...artwork, ...thumbnails, ...renderer].map(
   file => copyFile(join(root, file), join(output, file))
 ));
 
@@ -34,22 +35,27 @@ async function publishStatic(file) {
 const artURLs = Object.fromEntries(await Promise.all(artwork.map(async file => [
   basename(file, '.webp'), await publishStatic(file)
 ])));
+const thumbURLs=Object.fromEntries(await Promise.all(thumbnails.map(async file=>[
+  basename(file,'.webp'),await publishStatic(file)
+])));
 const stylesheet = await publishStatic('workbench.css');
 
 // The development server uses native ES modules. In production one versioned
 // module avoids serial discovery and parsing of the unused parts of Three.js.
-async function bundleEntry(entry,name,extraDefines={}){
+async function bundleEntries(){
   const bundle = await build({
     absWorkingDir: root,
-    entryPoints: [entry],
-    entryNames: name+'-[hash]',
+    entryPoints: {sofra:'simit.js',pano:'pano.js'},
+    entryNames: '[name]-[hash]',
+    chunkNames: '[name]-[hash]',
+    splitting: true,
     outdir: staticDir,
     bundle: true,
     minify: true,
     keepNames: true,
     format: 'esm',
     target: 'es2022',
-    define: { SOFRA_ART_URLS: JSON.stringify(artURLs),...extraDefines },
+    define: { SOFRA_ART_URLS: JSON.stringify(artURLs), SOFRA_THUMB_URLS: JSON.stringify(thumbURLs) },
     metafile: true,
     plugins: [{
       name: 'local-module-versions',
@@ -60,15 +66,27 @@ async function bundleEntry(entry,name,extraDefines={}){
       }
     }]
   });
-  return basename(Object.keys(bundle.metafile.outputs).find(file => file.endsWith('.js')));
+  const files=Object.entries(bundle.metafile.outputs);
+  const entry=id=>files.find(([,meta])=>meta.entryPoint===id)[0];
+  const script=entry('simit.js'),panoScript=entry('pano.js');
+  const imports=new Set();
+  function dependencies(file){
+    for(const item of bundle.metafile.outputs[file].imports){
+      if(item.kind!=='import-statement'||imports.has(item.path))continue;
+      imports.add(item.path);dependencies(item.path);
+    }
+  }
+  dependencies(script);
+  return {script:basename(script),panoScript:basename(panoScript),imports:[...imports].map(file=>basename(file))};
 }
-const [script,viewer,panoCSS]=await Promise.all([bundleEntry('simit.js','sofra'),bundleEntry('pano-renderer.js','pano-print'),publishStatic('pano.css')]);
-const panoScript=await bundleEntry('pano.js','pano',{SOFRA_PANO_VIEWER:JSON.stringify('./'+viewer)});
+const [{script,panoScript,imports},panoCSS]=await Promise.all([bundleEntries(),publishStatic('pano.css')]);
 const boardPage=await readFile(join(root,'pano.html'),'utf8');
 await writeFile(join(output,'pano.html'),boardPage.replace('./pano.js','./static/'+panoScript).replace('./pano.css',panoCSS).replace('./assets/simit-kapak.webp',artURLs['simit-kapak']));
 const html = await readFile(join(root, 'index.html'), 'utf8');
-const preload = ['kahvalti-tabagi', 'kareli-bezi', 'split-simit', 'simit-kapak', 'sesame-crust']
-  .map(id => '<link rel="preload" as="image" href="' + artURLs[id] + '">').join('\n  ');
+const preload=[
+  ...[script,...imports].map(file=>'<link rel="modulepreload" href="./static/'+file+'">'),
+  '<link rel="preload" as="image" href="'+artURLs['kahvalti-tabagi']+'">'
+].join('\n  ');
 await writeFile(join(output, 'index.html'), html
   .replace(/src="simit\.js[^"]*"/, 'src="./static/' + script + '"')
   .replace(/href="workbench\.css[^"]*"/, 'href="' + stylesheet + '"')

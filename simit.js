@@ -1,7 +1,8 @@
+import {clothArt,foodArt,recipeArt,prepareArt} from './board-art.js';
 import {editBread} from './bread-state.js';
 import { workflow, photoEdges, finishGesture } from './workflows.js';
 import { boardWrite, publicURL } from './pano-api.js';
-import { assetURL } from './asset-url.js';
+import { assetURL, thumbnailURL } from './asset-url.js';
 import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
 import { editHistory } from './undo-history.js';
 import { chooseSlice } from './slicing.js';
@@ -36,14 +37,37 @@ const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',mu
 let audioContext,noticeTimer,teaFrame=0,drinkService=null,albumDB;
 const photos=workflow(photoEdges);
 let wheelTurn=null;
+// Fetch cold choices concurrently, but apply shelf clicks in input order.
+const artQueue=[];
+function drainArt(){
+  while(board&&!gesture&&artQueue.length){
+    const job=artQueue[0];
+    if(job.recipe!==recipe||job.visit!==photos.visit||job.open!==sheet.open){artQueue.shift();continue;}
+    if(!job.ready)return;
+    artQueue.shift();
+    if(job.error)hint('Malzeme yüklenemedi. Tekrar dene.');
+    else job.apply();
+  }
+}
+function withArt(ids,apply){
+  const loading=prepareArt(ids);
+  if(board&&!loading&&!artQueue.length){apply();return;}
+  const job={apply,recipe,visit:photos.visit,open:sheet.open,ready:!loading};
+  artQueue.push(job);
+  loading?.then(()=>{job.ready=true;drainArt();},()=>{job.error=job.ready=true;drainArt();});
+  drainArt();
+}
 const clothImage=id=>'url("'+new URL(assetURL(cloths[id].asset),document.baseURI).href+'")';
 for(const [id,cloth] of Object.entries(cloths)){
   const button=document.createElement('button');
   button.type='button';button.textContent=cloth.name;button.dataset.cloth=id;
-  button.style.setProperty('--swatch',clothImage(id));
+  button.style.setProperty('--swatch','url("'+new URL(thumbnailURL(cloth.asset),document.baseURI).href+'")');
   button.onclick=()=>{
-    if(!board||gesture||id===recipe.cloth)return;
-    checkpoint();recipe.cloth=id;board.changeCloth(id);showCloth();showHandle();save();
+    if(!board||gesture)return;
+    withArt(clothArt(id),()=>{
+      if(id===recipe.cloth)return;
+      checkpoint();recipe.cloth=id;board.changeCloth(id);showCloth();showHandle();save();
+    });
   };
   $('#cloths').append(button);
 }
@@ -136,12 +160,16 @@ function update(settle=false,focusPiece){
 function undo(){
   if(gesture)return;
   let entry,previous;
-  while(!previous&&(entry=historyStack.pop())){
-    try{previous=readRecipe(JSON.parse(entry.state));}catch{/* Ignore an unreadable saved checkpoint. */}
+  while(!previous&&(entry=historyStack.peek())){
+    try{previous=readRecipe(JSON.parse(entry.state));}catch{/* Skip an unreadable checkpoint. */}
+    if(!previous)historyStack.pop();
   }
   if(!previous){showHandle();return;}
-  wheelTurn=null;recipe=previous;selected=selectionFor(entry.selected);chooseBrush(null);update();
-  if(mode==='camera'){board.refreshCover();showCoverChoice();showHandle();}
+  withArt(recipeArt(previous),()=>{
+    if(historyStack.peek()?.state!==entry.state)return;
+    historyStack.pop();wheelTurn=null;recipe=previous;selected=selectionFor(entry.selected);chooseBrush(null);update();
+    if(mode==='camera'){board.refreshCover();showCoverChoice();showHandle();}
+  });
 }
 function toggleBase(){
   checkpoint();
@@ -204,7 +232,7 @@ sliceAction.onclick=()=>{
     checkpoint();recipe.pieces.splice(i,1,...pieces);update(false,pieces[Math.floor(pieces.length/2)]);clink('spread');
   }});
 };
-undoAction.onclick=()=>{undo();canvas.focus({preventScroll:true});};
+undoAction.onclick=()=>{withArt([],undo);canvas.focus({preventScroll:true});};
 function clink(kind){
   if(music.muted)return;
   try{
@@ -284,23 +312,43 @@ function pickFood(id,x,z){
 function shelfPoint(x,y){
   const b=stage.getBoundingClientRect();return board.pick(b.left+x,b.top+y)||board.xy(b.left+x,b.top+y);
 }
-const resetShelf=mountShelf(stage,pickFood,(food,x,y)=>{
+function dropFood(food,x,y){
   if(!board||gesture)return;
   const box=stage.getBoundingClientRect();
   if(mode==='edit'&&board.pickCover(box.left+x,box.top+y)){moveCoverHint();return;}
   if(isTool(food)&&!recipe.closed&&mode==='edit'){
     const hit=board.pick(box.left+x,box.top+y,false);
-    chooseBrush(food);if(edible(hit))placeServing(hit);
-  }else{const p=shelfPoint(x,y);pickFood(food,p.x,p.z);}
-},ingredients,(food,x,y)=>{
+    const target=hit&&recipe.pieces[hit.i];
+    withArt(foodArt(food),()=>{
+      if(recipe.closed)return;
+      chooseBrush(food);
+      if(!hit||(!target&&recipe.baseRemoved))return;
+      if(target){hit.i=recipe.pieces.indexOf(target);if(hit.i<0)return;}
+      if(edible(hit))placeServing(hit);
+    });
+  }else{
+    // Keep the release point in table coordinates while a cold ingredient decodes.
+    const point=shelfPoint(x,y);
+    withArt(foodArt(food),()=>pickFood(food,point.x,point.z));
+  }
+}
+const resetShelf=mountShelf(stage,
+  food=>withArt(foodArt(food),()=>pickFood(food)),dropFood,ingredients,(food,x,y)=>{
   if(!board||mode!=='edit')return;
   if(food&&recipe.closed&&!pantry[food].drink){board.lift(null);return false;}
   if(food&&pantry[food].kind==='topping'){
     const box=stage.getBoundingClientRect();
     if(board.pickCover(box.left+x,box.top+y)){board.lift(null);return false;}
+    const loading=prepareArt(foodArt(food));
+    if(loading){loading.catch(()=>{});board.lift(null);return false;}
     const p=shelfPoint(x,y);board.lift(makePiece(food,p.x,p.z));
   }else {board.lift(null);return !food;}
 });
+function warmShelf(event){
+  const id=event.target.closest('[data-food]')?.dataset.food;
+  if(id)prepareArt(foodArt(id))?.catch(()=>{});
+}
+for(const event of ['pointerover','focusin','pointerdown'])$('#foods').addEventListener(event,warmShelf);
 function moveKnife(e){
   const paste=pantry[brush]?.paste;
   if(!brush||mode!=='edit'||(e.pointerType==='touch'&&!(paste&&gesture?.kind==='ink'))){knife.hidden=true;return;}
@@ -431,7 +479,7 @@ function move(e){
 }
 function ended(e){
   const outcome=finishGesture(gesture,'canvas',e);if(!outcome)return;
-  const g=gesture;gesture=null;canvas.dataset.cursor=pantry[brush]?.kind||'';
+  const g=gesture;gesture=null;queueMicrotask(drainArt);canvas.dataset.cursor=pantry[brush]?.kind||'';
   if(g.kind==='cover-move'&&g.moved){
     if(outcome==='commit')keepCover();else board.restoreCover();
   }
@@ -484,7 +532,12 @@ turn.onpointerdown=e=>{
   const p=recipe.pieces[selected];if(!p)return;
   turn.setPointerCapture(e.pointerId);gesture={kind:'turn',id:e.pointerId,a:p.a,start:angleAt(e,p),old:JSON.stringify(recipe)};
 };
-turn.onpointermove=e=>{
+// A handle can receive several moves before the display can present one.
+let turnFrame=0,pendingTurn=null;
+function flushTurn(){
+  if(turnFrame)cancelAnimationFrame(turnFrame);
+  turnFrame=0;
+  const e=pendingTurn;pendingTurn=null;if(!e)return;
   if(gesture?.kind==='cover-turn'&&e.pointerId===gesture.id){
     const g=gesture;
     if(!g.moved&&Math.hypot(e.clientX-g.px,e.clientY-g.py)<2)return;
@@ -494,9 +547,15 @@ turn.onpointermove=e=>{
   if(gesture?.kind!=='turn'||e.pointerId!==gesture.id)return;
   const p=recipe.pieces[selected];p.a=round(gesture.a+gesture.start-angleAt(e,p));board.sync(recipe,false,false);
   const h=board.handle(selected);turn.style.left=h.x+'px';turn.style.top=h.y+'px';
+}
+turn.onpointermove=e=>{
+  if(!gesture||e.pointerId!==gesture.id)return;
+  pendingTurn=e;if(!turnFrame)turnFrame=requestAnimationFrame(flushTurn);
 };
 turn.onpointerup=turn.onpointercancel=turn.onlostpointercapture=e=>{
   const outcome=finishGesture(gesture,'handle',e);if(!outcome)return;
+  if(outcome==='cancel')pendingTurn=null;
+  flushTurn();queueMicrotask(drainArt);
   if(gesture.kind==='cover-turn'){
     const moved=gesture.moved;gesture=null;
     if(outcome==='cancel'){board.restoreCover();showHandle();}
@@ -534,22 +593,29 @@ function dialog(title,html,photoDialog=false){
   $('.close').onclick=()=>sheet.close();
 }
 function endService(){cancelAnimationFrame(teaFrame);drinkService?.close();drinkService=null;}
-sheet.addEventListener('close',()=>{if(!sheet.open){endService();if(photos.state!=='encoding')photos.send('dismiss');}});
+sheet.addEventListener('close',()=>{if(!sheet.open){endService();if(photos.state!=='encoding'&&photos.state!=='idle')photos.send('dismiss');}});
 sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close();});
 $('#help').onclick=()=>dialog('Nasıl oynanır?','<ul><li>Malzemeyi raftan alıp ekmeğin üstüne veya tabağa bırak. Seçili malzemeyi yuvarlak tutamaçla döndür, Kaldır düğmesiyle kaldır.</li><li>Sivri biberi Aynala ile ters çevir. Biberi veya zeytini seçip Dilimle ile halkalara kes. Dilimlerde Kalınlık ile inceliği ayarla.</li><li>Sofradaki içeceğe dokun. Çayı doldur, ayranın folyosunu soy veya kutuya pipet tak.</li><li>Kâseyi seç. Tek dokunuş bir porsiyon koyar. Kaymağı ve salçaları bıçakla yay, reçel ve menemeni kaşıkla gezdir. Ketçap ve mayonez için basılı tutarak bir damla sık veya sürükleyerek ince bir şerit çiz. Aleti bırakmak için × düğmesine dokun.</li><li>Sofranın boş bir yerini sürükleyerek etrafında dön. Fareyle sağ tuşu da kullanabilirsin. Boş bir yere çift dokununca tepeden bakarsın.</li><li>Alt ekmeği seçip Kaldır’a dokun. Ekmek menüsünden de alt parçayı kaldırabilir veya geri koyabilirsin. Üst parça tabağın yanında başlar. Raftaki son dört ekmek yarısını da tabağa sürükleyebilirsin. Sofrada ve Foto’da üst parçayı sürükle, ⟳ tutamacıyla döndür. Sofradan almak için üst parçayı seçip Kaldır’a dokun. Kamerayı çevirmek için sofrayı sürükle. Foto’ya tekrar basınca çekersin.</li></ul><p>Klavye ile rafta okları ve Enter’ı kullan. Tabakta [ ve ] ile seç, oklarla taşı, R ile döndür, Delete ile kaldır. Foto’da ⟳ odaktayken oklarla üst parçayı taşı. R ve Shift+R ile ince döndür. Sofra odaktayken oklar kamerayı çevirir. Kaldır ile bir sürmeyi veya malzemenin tamamını seç. Geri al veya Ctrl/⌘ Z, son düzenlemeyi geri alır.</p>'+musicCredits());
 function startBreakfast(id,cloth,random=false){
-  checkpoint();recipe=emptyRecipe(id,cloth);selected=-1;chooseBrush(null);
+  artQueue.length=0;
+  const next=emptyRecipe(id,cloth),foods=[];
   if(random){
-    board.sync(recipe);
     const solids=ingredients.filter(f=>f.kind==='topping'&&!f.drink&&!f.bread),count=3+Math.floor(Math.random()*6);
-    for(let i=0;i<count;i++){
-      const pos=board.landingSpot(i),item=solids[Math.floor(Math.random()*solids.length)];
-      recipe.pieces.push({...makePiece(item.id,pos.x,pos.z),a:round(Math.random()*6.28)});
-    }
+    for(let i=0;i<count;i++)foods.push(solids[Math.floor(Math.random()*solids.length)].id);
   }
-  if(sheet.open)sheet.close();
-  if(mode==='camera')leaveCamera();
-  board.resetOrbit();update();hint(random?'':'Üst parçayı tutup taşıyabilirsin.');
+  withArt([...recipeArt(next),...foods.flatMap(foodArt)],()=>{
+    checkpoint();recipe=next;selected=-1;chooseBrush(null);
+    if(random){
+      board.sync(recipe);
+      foods.forEach((food,i)=>{
+        const pos=board.landingSpot(i);
+        recipe.pieces.push({...makePiece(food,pos.x,pos.z),a:round(Math.random()*6.28)});
+      });
+    }
+    if(sheet.open)sheet.close();
+    if(mode==='camera')leaveCamera();
+    board.resetOrbit();update();hint(random?'':'Üst parçayı tutup taşıyabilirsin.');
+  });
 }
 $('#grand-reset').onclick=()=>{
   if(!board||gesture)return;
@@ -576,7 +642,7 @@ $('#fresh').onclick=()=>{
   if(restore)$('#restore-cover').onclick=()=>{
     checkpoint();editBread(recipe,'restoreTop');sheet.close();selected=coverSelection;chooseBrush(null);update();canvas.focus({preventScroll:true});
   };
-  $('#undo').disabled=!historyStack.length;$('#undo').onclick=()=>{undo();sheet.close();};
+  $('#undo').disabled=!historyStack.length;$('#undo').onclick=()=>{sheet.close();undo();};
   for(const b of $('.bread-options').children)b.onclick=()=>startBreakfast(b.dataset.bread,recipe.cloth);
   $('#random').onclick=()=>startBreakfast(recipe.bread,recipe.cloth,true);
 };
@@ -652,7 +718,10 @@ function photoPreview(record,fromAlbum=false){
     try{record.id=await fetchAlbum('keep',record);if(sheet.open&&photos.send('saved',visit))photoPreview(record,true);}
     catch{if(!sheet.open||!photos.send('failed',visit))return;button.disabled=hang.disabled=false;feedback.textContent='Albüm kaydedilemedi. Fotoğrafı indirebilirsin.';}
   };
-  if(fromAlbum)$('#remix').onclick=()=>{checkpoint();recipe=readRecipe(record.recipe)||emptyRecipe();selected=-1;chooseBrush(null);sheet.close();leaveCamera();update();};
+  if(fromAlbum)$('#remix').onclick=()=>{
+    const next=readRecipe(record.recipe)||emptyRecipe();
+    withArt(recipeArt(next),()=>{checkpoint();recipe=next;selected=-1;chooseBrush(null);sheet.close();leaveCamera();update();});
+  };
   $('#share').onclick=async()=>{
     const link=recipeURL(record.recipe);
     try{await navigator.clipboard.writeText(link);feedback.textContent='Bağlantı kopyalandı.';}
@@ -710,6 +779,15 @@ $('#album').onclick=async()=>{
   if(read('sofra.table.v1') && gallery.isConnected){const p=document.createElement('p'),a=document.createElement('a');a.href='./table.html';a.textContent='Önceki kahvaltı masam';p.append(a);$('#sheet-content').append(p);}
 };
 document.addEventListener('keydown',e=>{
+  if(artQueue.length&&!sheet.open&&(e.target===canvas||e.target===turn)){
+    if(e.key==='Escape')artQueue.length=0;
+    else if(['Enter','Delete','Backspace','[',']','r','R','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z')){
+      e.preventDefault();withArt([],()=>editKey(e));return;
+    }
+  }
+  editKey(e);
+});
+function editKey(e){
   if(sheet.open||!board||gesture||e.target===coverSelect||e.target.closest?.('#radio'))return;
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return;}
   if(e.key==='Escape'){if(mode==='camera')leaveCamera();else{chooseBrush(null);selected=-1;showHandle();}return;}
@@ -750,7 +828,7 @@ document.addEventListener('keydown',e=>{
   const dirs={ArrowLeft:[-.02,0],ArrowRight:[.02,0],ArrowUp:[0,-.02],ArrowDown:[0,.02]};
   if(dirs[e.key]){e.preventDefault();const [dx,dz]=dirs[e.key];releasePiece({...p,x:p.x+dx,z:p.z+dz},selected);}
   if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
-});
+}
 new ResizeObserver(()=>requestAnimationFrame(showHandle)).observe(stage);
 window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,photo:photos.state,gesture:gesture?.kind??null,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
 window.advanceTime=ms=>board?.step(ms);
@@ -760,6 +838,10 @@ function openSharedLink(){
   if(!shared)return;
   // A link opened during another interaction gets the normal fresh-page preview.
   if(gesture||mode==='camera'||(sheet.open&&!$('#shared-print'))){location.reload();return;}
+  const hash=location.hash;
+  withArt(recipeArt(shared),()=>{if(location.hash===hash)previewShared(shared);});
+}
+function previewShared(shared){
   history.replaceState(null,'',location.pathname+location.search);
   let print;
   try{
@@ -774,7 +856,7 @@ function openSharedLink(){
 }
 window.addEventListener('hashchange',openSharedLink);
 try{
-  board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
+  board=await createBoard(canvas,recipe);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
   hint(recipe.coverRemoved||recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
-  openSharedLink();
+  openSharedLink();drainArt();
 }catch(err){console.error(err);hint('Sofra açılamadı. WebGL destekli bir tarayıcıda yenile.',0);}

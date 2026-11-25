@@ -5,8 +5,8 @@ import {assetURL} from './asset-url.js';
 
 const $=selector=>document.querySelector(selector);
 const pins=$('#pins'),dialog=$('#post'),more=$('#more'),notice=$('#status');
-const viewerURL=typeof SOFRA_PANO_VIEWER==='undefined'?'./pano-renderer.js':SOFRA_PANO_VIEWER;
-const dateLabel=ms=>new Intl.DateTimeFormat('tr',{day:'numeric',month:'short',year:'numeric',timeZone:'Europe/Istanbul'}).format(ms);
+const dates=new Intl.DateTimeFormat('tr',{day:'numeric',month:'short',year:'numeric',timeZone:'Europe/Istanbul'});
+const dateLabel=ms=>dates.format(ms);
 const detail=workflow(detailEdges);
 let sort='new',pageToken=null,revision=0,current=null;
 const known=new Set(),prints=new Map();
@@ -21,31 +21,39 @@ const observer=new IntersectionObserver(entries=>{
 },{rootMargin:'80px'});
 function picture(post,size){
   const box=document.createElement('div');box.className='picture';
-  // An overhead composition stays available on devices without WebGL.
-  box.style.backgroundImage='url("'+assetURL(cloths[post.recipe.cloth].asset)+'")';
-  function layer(asset,x,z,width,angle=0){
-    const img=new Image();img.alt='';img.src=assetURL(asset);
-    Object.assign(img.style,{position:'absolute',left:(50+x*54)+'%',top:(50+z*54)+'%',width:width*54+'%',height:'auto',transform:'translate(-50%,-50%) rotate('+(-angle)+'rad)'});box.append(img);
+  function fallback(){
+    // An overhead composition stays available on devices without WebGL.
+    box.style.backgroundImage='url("'+assetURL(cloths[post.recipe.cloth].asset)+'")';
+    function layer(asset,x,z,width,angle=0){
+      const img=new Image();img.alt='';img.src=assetURL(asset);
+      Object.assign(img.style,{position:'absolute',left:(50+x*54)+'%',top:(50+z*54)+'%',width:width*54+'%',height:'auto',transform:'translate(-50%,-50%) rotate('+(-angle)+'rad)'});box.append(img);
+    }
+    layer('kahvalti-tabagi',0,0,1.67);
+    if(!post.recipe.baseRemoved)layer(breads[post.recipe.bread].asset,0,0,1);
+    for(const p of post.recipe.pieces){const f=pantry[p.food];layer(f.asset||p.food,p.x,p.z,f.size||(f.bread?1:.32),p.a);}
   }
-  layer('kahvalti-tabagi',0,0,1.67);
-  if(!post.recipe.baseRemoved)layer(breads[post.recipe.bread].asset,0,0,1);
-  for(const p of post.recipe.pieces){const f=pantry[p.food];layer(f.asset||p.food,p.x,p.z,f.size||(f.bread?1:.32),p.a);}
   const apply=src=>{const img=new Image();img.src=src;img.alt=post.title;box.replaceChildren(img);};
   const key=post.id+'-'+size;
   if(prints.has(key))apply(prints.get(key));
   else{
     box.drawPrint=()=>{
+      if(prints.has(key)){apply(prints.get(key));return;}
+      fallback();
       queue=queue.then(async()=>{
         if(viewerUnavailable||!box.isConnected)return;
         if(!prints.has(key)){
-          const {printRecipe}=await import(viewerURL);
+          const {printRecipe}=await import('./pano-renderer.js');
           const canvas=await printRecipe(post,size);
-          const src=canvas.toDataURL('image/webp',.83);
+          const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',.83));
+          if(!blob)return;
+          const src=await new Promise((resolve,reject)=>{
+            const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);
+          });
           if(prints.size>=40)prints.delete(prints.keys().next().value);
           prints.set(key,src);
         }
         if(box.isConnected)apply(prints.get(key));
-      }).catch(()=>{viewerUnavailable=true;});
+      }).catch(error=>{if(error.name==='ViewerUnavailable')viewerUnavailable=true;});
     };
     observer.observe(box);
   }
