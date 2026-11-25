@@ -1,13 +1,15 @@
 import {createBoard} from './board-3d.js';
-import {prepareArt,recipeArt} from './board-art.js';
-let studio;
-export async function printRecipe(post,size){
-  await prepareArt(recipeArt(post.recipe));
-  studio??=createBoard(document.querySelector('#studio canvas'),post.recipe,true).catch(cause=>{
+import {printAssetURL} from './pano-textures.js';
+import {decodeImage,prepareArt,recipeArt} from './board-art.js';
+let studio,lastPost;
+export async function printRecipe(post,size,canvas){
+  await prepareArt(recipeArt(post.recipe),id=>decodeImage(id,printAssetURL));
+  studio??=createBoard(canvas,post.recipe,true).catch(cause=>{
     const error=new Error('3D renderer unavailable',{cause});error.name='ViewerUnavailable';throw error;
   });
   const board=await studio;
-  board.sync(post.recipe);
-  board.setView(post.angle,post);
+  if(post.id!==lastPost){
+    board.sync(post.recipe);board.setView(post.angle,post);lastPost=post.id;
+  }
   return board.capture(size);
 }

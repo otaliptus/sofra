@@ -1,4 +1,5 @@
 import * as THREE from './node_modules/three/build/three.module.js';
+import { canvasSurface as canvas2d } from './canvas-surface.js';
 import { art, prepareArt, recipeArt } from './board-art.js';
 import { images as teaImages } from './drawing.js?v=servings';
 import { createPhotoFocus } from './photo-focus.js';
@@ -11,11 +12,10 @@ import { breads, cloths, emptyRecipe, pantry, openingPercent, sliceThickness, lo
 import { simitRing } from './simit-ring.js';
 import { crownHeight, crownPlacement, parkedCrown } from './bread-crown.js?v=slices';
 
+export {cameraNames} from './recipe.js?v=gazete';
 
-export const cameraNames={top:'Üstten',tilt:'Eğik',low:'Alçak',corner:'Köşeden'};
 const surface=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 const ray=new THREE.Raycaster(), point3=new THREE.Vector3();
-const canvas2d=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
 function texture(source){
   const map=new THREE.CanvasTexture(source);map.colorSpace=THREE.SRGBColorSpace;map.anisotropy=4;return map;
 }
@@ -174,7 +174,7 @@ function relative(p,x,z){
 export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
   const loading=prepareArt(recipeArt(initial));
   const renderer=new THREE.WebGLRenderer({canvas,alpha:false,antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
-  renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));
+  renderer.setPixelRatio(printOnly?1:Math.min(devicePixelRatio||1,1.75));
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
   renderer.shadowMap.autoUpdate=false;
   const scene=new THREE.Scene();scene.background=new THREE.Color('#615049');
@@ -422,11 +422,23 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     const p=new THREE.Vector3(x,y,z).project(camera);return {x:(p.x+1)*.5*canvas.clientWidth,y:(1-p.y)*.5*canvas.clientHeight};
   }
   function hasBread(x,z){return bread.group.visible&&bread.mask.alpha(x/bread.width+.5,z/bread.height+.5)>.48;}
-  function heightAt(x,z,count,exclude){
-    let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
+  // A slice takes hundreds of contact samples over the same small footprint.
+  // Discard distant supports once before evaluating those points.
+  function nearbySupports(p,ref,count,exclude=-1){
+    const c=Math.abs(Math.cos(p.a)),s=Math.abs(Math.sin(p.a));
+    const halfWidth=(c*ref.width+s*ref.height)/2+1e-9;
+    const halfDepth=(s*ref.width+c*ref.height)/2+1e-9;
+    const nearby=[];
     for(let i=0;i<count;i++){
-      if(i===exclude)continue;
-      const {piece:p,ref:food,c,s,extentX,extentZ}=placed[i],dx=x-p.x,dz=z-p.z;
+      const entry=placed[i];if(i===exclude)continue;
+      if(Math.abs(p.x-entry.piece.x)<=halfWidth+entry.extentX&&Math.abs(p.z-entry.piece.z)<=halfDepth+entry.extentZ)nearby.push(entry);
+    }
+    return nearby;
+  }
+  function heightAt(x,z,supports=placed){
+    let high=hasBread(x,z)?bread.depth+(bread.coating?.rise(x/bread.width+.5,z/bread.height+.5)||0):tableHeight(x,z);
+    for(const {piece:p,ref:food,i,c,s,extentX,extentZ} of supports){
+      const dx=x-p.x,dz=z-p.z;
       if(Math.abs(dx)>extentX||Math.abs(dz)>extentZ)continue;
       const lx=localX(p,dx*c-dz*s),lz=dx*s+dz*c;
       const u=lx/food.width+.5,v=lz/food.height+.5;
@@ -438,12 +450,14 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
   }
   function support(p,count=recipe.pieces.length,exclude=-1,fit=false){
     const ref=modelFor(p),cs=Math.cos(p.a),sn=Math.sin(p.a);
-    const samples=ref.contacts.map(([x,z])=>{const a=localX(p,x);return heightAt(p.x+a*cs+z*sn,p.z-a*sn+z*cs,count,exclude);});
+    const nearby=nearbySupports(p,ref,count,exclude);
+    const samples=ref.contacts.map(([x,z])=>{const a=localX(p,x);return heightAt(p.x+a*cs+z*sn,p.z-a*sn+z*cs,nearby);});
     const good=samples.filter(v=>v>=0),max=Math.max(...samples);
     const stable=!!pantry[p.food].bread||pantry[p.food].drink||good.length>=Math.max(1,samples.length*.28);
     if(!fit||ref.flex||pantry[p.food].drink||max-Math.min(...samples)<.003)return {stable,height:max+.001};
     const plane=restingPlane(ref.contacts,samples,.42);
-    return {stable,height:plane.height+.001,offset:(x,z)=>plane.sx*x+plane.sz*z};
+    const offset=(plane.sx||plane.sz)?(x,z)=>plane.sx*x+plane.sz*z:null;
+    return {stable,height:plane.height+.001,offset};
   }
   function restingPlane(contacts,samples,maxSlope){
     // A rigid slice can lean across two different contact heights. Find the
@@ -510,7 +524,8 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
       return;
     }
     const c=Math.cos(yaw),s=Math.sin(yaw);
-    const samples=lid.contacts.map(([lx,lz])=>heightAt(x+c*lx+s*lz,z-s*lx+c*lz,recipe.pieces.length,-1));
+    const nearby=nearbySupports({x,z,a:yaw},lid,recipe.pieces.length);
+    const samples=lid.contacts.map(([lx,lz])=>heightAt(x+c*lx+s*lz,z-s*lx+c*lz,nearby));
     const plane=restingPlane(lid.contacts,samples,maxSlope);
     lid.group.position.set(x,plane.height-.0004,z);
     lid.group.rotation.set(-Math.atan(plane.sz),yaw,Math.atan(plane.sx),'YXZ');
@@ -571,12 +586,13 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
   function drape(p,index,base,ref=modelFor(p),stiff=p.food===breads.simit.crown ? .32 : p.food==='kasar' ? .50 : p.food.includes('onion') ? .70 : .9){
     const c=Math.cos(p.a),s=Math.sin(p.a);
     const ring=!p.food||p.food===breads.simit.crown;
+    const nearby=nearbySupports(p,ref,index);
     const steps=28,stride=steps+1,grid=new Float32Array(stride*stride);
     // A nearby high spot lifts a region of the slice through its own stiffness.
     // Propagate those contact heights, then relax the surface between contacts.
     for(let row=0;row<=steps;row++)for(let col=0;col<=steps;col++){
       const x=(col/steps-.5)*ref.width,z=(row/steps-.5)*ref.height;
-      grid[row*stride+col]=ring&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+localX(p,x)*c+z*s,p.z-localX(p,x)*s+z*c,index,-1);
+      grid[row*stride+col]=ring&&ref.mask.alpha(col/steps,row/steps)<.45?clothHeight:heightAt(p.x+localX(p,x)*c+z*s,p.z-localX(p,x)*s+z*c,nearby);
     }
     const dx=ref.width/steps*stiff,dz=ref.height/steps*stiff,diagonal=Math.hypot(dx,dz);
     function sweep(start,end,dir){
@@ -672,7 +688,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
       // handles these samples. Image-backed food has a strict UV rectangle.
       const extentX=pantry[p.food].drink?Infinity:(Math.abs(c)*ref.width+Math.abs(s)*ref.height)/2;
       const extentZ=pantry[p.food].drink?Infinity:(Math.abs(s)*ref.width+Math.abs(c)*ref.height)/2;
-      placed.push({piece:p,ref,template,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
+      placed.push({piece:p,i,ref,template,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
     }
     for(const {node} of reusable.values())releaseNode(node);
     if(printOnly)return;
@@ -828,7 +844,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
         if(pantry[p.food].drink)continue;
         const [lx,lz]=ref.contacts[Math.floor(ref.contacts.length/2)]||[0,0];
         const c=Math.cos(p.a),s=Math.sin(p.a),x=p.x+localX(p,lx)*c+lz*s,z=p.z-localX(p,lx)*s+lz*c;
-        const pos=screen(x,heightAt(x,z,recipe.pieces.length),z);
+        const pos=screen(x,heightAt(x,z),z);
         if(!pickCover(b.left+pos.x,b.top+pos.y)){
           const hit=pick(b.left+pos.x,b.top+pos.y,false);
           if(hit&&!pantry[recipe.pieces[hit.i]?.food]?.drink)return hit;

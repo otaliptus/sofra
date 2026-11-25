@@ -7,9 +7,8 @@ import { serveDrink, serviceControls } from './drink-service.js?v=free-peel';
 import { editHistory } from './undo-history.js';
 import { chooseSlice } from './slicing.js';
 import { mountMusic, musicCredits } from './music.js?v=opt-in';
-import { createBoard, cameraNames } from './board-3d.js?v=gazete';
 import { mountShelf } from './shelf.js?v=shelf-halves';
-import { breads, cloths, ingredients, pantry, pasteRemaining, canMirror, canSlice, cutServings, wholeCuts, openingPercent, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
+import { cameraNames, breads, cloths, ingredients, pantry, pasteRemaining, canMirror, canSlice, cutServings, wholeCuts, openingPercent, isTool, emptyRecipe, readRecipe, recipeFromHash, recipeURL, photoStore, clamp, round, photoCovers, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
 import { teaName } from './model.js?v=servings';
 import { images as teaImages, drawPour } from './drawing.js?v=servings';
 
@@ -477,8 +476,25 @@ function move(e){
     board.lift(gesture.next,gesture.i,(e.clientX-gesture.lastX)*.006);gesture.lastX=e.clientX;
   }
 }
+// Pose a held object once per displayed frame. Ink still visits every sampled point.
+let dragFrame=0,pendingDrag=null;
+function flushDrag(){
+  cancelAnimationFrame(dragFrame);dragFrame=0;
+  const event=pendingDrag;pendingDrag=null;
+  if(event)move(event);
+}
+function pointerMove(e){
+  if(gesture?.kind!=='cover-move'&&gesture?.kind!=='piece'){move(e);return;}
+  if(e.pointerId!==gesture.id)return;
+  const threshold=gesture.kind==='piece'?4:3;
+  if(Math.hypot(e.clientX-gesture.px,e.clientY-gesture.py)>threshold)gesture.moved=true;
+  pendingDrag=e;if(!dragFrame)dragFrame=requestAnimationFrame(flushDrag);
+}
 function ended(e){
   const outcome=finishGesture(gesture,'canvas',e);if(!outcome)return;
+  if(outcome==='cancel')pendingDrag=null;
+  else if(pendingDrag)pendingDrag=e;
+  flushDrag();
   const g=gesture;gesture=null;queueMicrotask(drainArt);canvas.dataset.cursor=pantry[brush]?.kind||'';
   if(g.kind==='cover-move'&&g.moved){
     if(outcome==='commit')keepCover();else board.restoreCover();
@@ -506,7 +522,7 @@ canvas.addEventListener('dblclick',e=>{
   if(mode==='camera'){if(!board.pickCover(e.clientX,e.clientY))camera('tilt');return;}
   if(!board.pickCover(e.clientX,e.clientY)&&!board.pick(e.clientX,e.clientY)){board.resetOrbit(true);showHandle();}
 });
-canvas.addEventListener('pointerdown',begin);canvas.addEventListener('pointermove',move);
+canvas.addEventListener('pointerdown',begin);canvas.addEventListener('pointermove',pointerMove);
 canvas.addEventListener('pointerup',ended);canvas.addEventListener('pointercancel',ended);
 canvas.addEventListener('lostpointercapture',ended);
 canvas.addEventListener('pointerleave',()=>knife.hidden=true);
@@ -856,7 +872,9 @@ function previewShared(shared){
 }
 window.addEventListener('hashchange',openSharedLink);
 try{
-  board=await createBoard(canvas,recipe);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
+  const studio=import('./board-3d.js?v=gazete').then(({createBoard})=>createBoard(canvas,recipe));
+  [board]=await Promise.all([studio,prepareArt(recipeArt(recipe))]);
+  update();$('#shutter').disabled=$('#grand-reset').disabled=false;
   hint(recipe.coverRemoved||recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
   openSharedLink();drainArt();
 }catch(err){console.error(err);hint('Sofra açılamadı. WebGL destekli bir tarayıcıda yenile.',0);}

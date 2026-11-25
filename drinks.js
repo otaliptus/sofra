@@ -1,3 +1,4 @@
+import {canvasSurface} from './canvas-surface.js';
 import * as THREE from './node_modules/three/build/three.module.js';
 
 const glaze=(color,roughness,map)=>new THREE.MeshStandardMaterial({color,roughness,map:map||null});
@@ -47,7 +48,7 @@ function openable(body,perimeter,contacts,surface,makeParts){
   return ref;
 }
 function foilGrain(){
-  const canvas=document.createElement('canvas');canvas.width=canvas.height=192;
+  const canvas=canvasSurface(192,192);
   const ctx=canvas.getContext('2d'),pixels=ctx.createImageData(192,192);
   for(let z=0;z<192;z++)for(let x=0;x<192;x++){
     const u=(x-96)/96,v=(z-96)/96,r=Math.hypot(u,v),a=Math.atan2(v,u);
@@ -130,7 +131,7 @@ const milks={
   'muzlu-sut':{tile:2,flavor:'MUZLU',body:0xeac568,side:0xf3d78b,ink:0x385f52}
 };
 function cartonSide(style,print){
-  const canvas=document.createElement('canvas');canvas.width=168;canvas.height=320;
+  const canvas=canvasSurface(168,320);
   const ctx=canvas.getContext('2d'),ink='#'+style.ink.toString(16).padStart(6,'0');
   ctx.fillStyle='#'+style.side.toString(16).padStart(6,'0');ctx.fillRect(0,0,168,320);
   ctx.fillStyle=ink;ctx.fillRect(0,17,168,3);ctx.fillRect(0,296,168,3);
@@ -143,7 +144,7 @@ function cartonSide(style,print){
   return map;
 }
 function cartonTop(style){
-  const canvas=document.createElement('canvas');canvas.width=320;canvas.height=228;
+  const canvas=canvasSurface(320,228);
   const ctx=canvas.getContext('2d'),ink='#'+style.ink.toString(16).padStart(6,'0');
   ctx.fillStyle='#'+style.side.toString(16).padStart(6,'0');ctx.fillRect(0,0,320,228);
   ctx.fillStyle='#f7e7c6';ctx.fillRect(0,125,320,85);
@@ -257,8 +258,8 @@ function printTiles(atlas,rows){
   // Each tile gets its own mip chain so the paper and porcelain stay crisp
   // without bleeding into neighbouring prints at shelf size.
   return Array.from({length:3*rows},(_,i)=>{
-    const canvas=document.createElement('canvas'),w=atlas.width/3,h=atlas.height/rows;
-    canvas.width=Math.round(w);canvas.height=Math.round(h);
+    const w=atlas.width/3,h=atlas.height/rows;
+    const canvas=canvasSurface(Math.round(w),Math.round(h));
     canvas.getContext('2d').drawImage(atlas,(i%3)*w,Math.floor(i/3)*h,w,h,0,0,canvas.width,canvas.height);
     const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;return texture;
   });

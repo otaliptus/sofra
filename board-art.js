@@ -24,14 +24,17 @@ export function recipeArt(recipe){
   for(const m of recipe.strokes)include(m.food);
   return ids;
 }
+export async function decodeImage(id,urlFor=assetURL){
+  const image=new Image();image.src=urlFor(id);
+  await image.decode();return image;
+}
 // A warm operation stays synchronous, including repeated shelf clicks and undo.
-export function prepareArt(ids){
+export function prepareArt(ids,loadImage=decodeImage){
   const jobs=[];
   for(const id of new Set(ids)){
     if(art[id])continue;
     if(!loading.has(id)){
-      const image=new Image();image.src=assetURL(id);
-      loading.set(id,image.decode().then(()=>{art[id]=image;}).finally(()=>loading.delete(id)));
+      loading.set(id,loadImage(id).then(image=>{art[id]=image;}).finally(()=>loading.delete(id)));
     }
     jobs.push(loading.get(id));
   }

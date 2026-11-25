@@ -145,4 +145,30 @@ try{
   assert.equal(reports,1);assert.equal(detailGets,3);
   assert.deepEqual(errors,[]);
   console.log('Board: same-recipe reopen, late vote failure, confirmation cancellation, report and reload passed.');
+  // Switch off all 3D paths on the next visit. Both sizes must already be on disk.
+  await page.waitForFunction(()=>document.querySelector('#portrait .picture img')?.naturalWidth===640);
+  await click('close');
+  await page.waitForFunction(()=>document.querySelector('.pin .picture img')?.naturalWidth===320);
+  await page.waitForFunction(()=>new Promise(resolve=>{
+    const open=indexedDB.open('sofra-pano-prints');
+    open.onsuccess=()=>{
+      const db=open.result,count=db.transaction('photos').objectStore('photos').count();
+      count.onsuccess=()=>{resolve(count.result===2);db.close();};
+    };
+  }));
+  await page.addInitScript(()=>{
+    Object.defineProperty(window,'Worker',{value:undefined});
+    const original=HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext=function(kind,...args){
+      if(kind.startsWith('webgl'))throw Error('Unexpected WebGL on a cached visit');
+      return original.call(this,kind,...args);
+    };
+  });
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelector('.pin .picture img')?.naturalWidth===320);
+  await page.locator('.pin').first().click();
+  await page.waitForFunction(()=>document.querySelector('#portrait .picture img')?.naturalWidth===640);
+  assert.deepEqual(errors,[]);
+  console.log('Board: both finished photo sizes survive a reload with WebGL disabled.');
+
 }finally{await browser.close();}

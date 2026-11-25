@@ -4,6 +4,7 @@ export const breads = {
   acma: {name:'Açma', asset:'acma', depth:.066, crown:'acma-kapak', crownDepth:.104},
   'tas-ekmek': {name:'Taş ekmek sandviç', asset:'tas-ekmek', depth:.062, crown:'tas-kapak', crownDepth:.085, closable:true}
 };
+export const cameraNames={top:'Üstten',tilt:'Eğik',low:'Alçak',corner:'Köşeden'};
 export const photoCovers={open:'Açık',half:'Yarı kapalı',full:'Kapalı',side:'Yanında',custom:'Serbest'};
 export const tableCoverFor=recipe=>recipe.coverRemoved?'open':recipe.closed?'full':recipe.coverPose?'custom':'side';
 export const photoCoverFor=recipe=>recipe.coverRemoved?'open':recipe.photoCover??tableCoverFor(recipe);

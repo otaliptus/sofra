@@ -1,3 +1,4 @@
+import {canvasSurface as canvas} from './canvas-surface.js';
 import * as THREE from './node_modules/three/build/three.module.js';
 import { clamp, pantry, pasteRemaining } from './recipe.js?v=gazete';
 
@@ -76,9 +77,7 @@ function knife(ctx,image,points,unit,load){
     ctx.drawImage(image,sourceX,0,sourceWidth,image.height,-stripWidth/2,-width/2,stripWidth,width);ctx.restore();
   }
 }
-function canvas(w,h){
-  const surface=document.createElement('canvas');surface.width=w;surface.height=h;return surface;
-}
+
 
 // Prepare a dry scrape from the photographed paste. Parallel knife tracks
 // break into patches as the blade runs out. Their holes also cut the relief.

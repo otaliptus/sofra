@@ -45,7 +45,7 @@ const stylesheet = await publishStatic('workbench.css');
 async function bundleEntries(){
   const bundle = await build({
     absWorkingDir: root,
-    entryPoints: {sofra:'simit.js',pano:'pano.js'},
+    entryPoints: {sofra:'simit.js',pano:'pano.js',printer:'pano-worker.js'},
     entryNames: '[name]-[hash]',
     chunkNames: '[name]-[hash]',
     splitting: true,
@@ -69,22 +69,24 @@ async function bundleEntries(){
   const files=Object.entries(bundle.metafile.outputs);
   const entry=id=>files.find(([,meta])=>meta.entryPoint===id)[0];
   const script=entry('simit.js'),panoScript=entry('pano.js');
-  const imports=new Set();
-  function dependencies(file){
-    for(const item of bundle.metafile.outputs[file].imports){
-      if(item.kind!=='import-statement'||imports.has(item.path))continue;
-      imports.add(item.path);dependencies(item.path);
+  function preload(entries){
+    const imports=new Set(entries);
+    for(const file of imports){
+      for(const item of bundle.metafile.outputs[file].imports){
+        if(item.kind==='import-statement')imports.add(item.path);
+      }
     }
+    return [...imports].map(file=>'<link rel="modulepreload" href="./static/'+basename(file)+'">').join('\n  ');
   }
-  dependencies(script);
-  return {script:basename(script),panoScript:basename(panoScript),imports:[...imports].map(file=>basename(file))};
+  return {script:basename(script),panoScript:basename(panoScript),printer:basename(entry('pano-worker.js')),
+    gamePreload:preload([script,entry('board-3d.js')]),panoPreload:preload([panoScript])};
 }
-const [{script,panoScript,imports},panoCSS]=await Promise.all([bundleEntries(),publishStatic('pano.css')]);
+const [{script,panoScript,printer,gamePreload,panoPreload},panoCSS]=await Promise.all([bundleEntries(),publishStatic('pano.css')]);
 const boardPage=await readFile(join(root,'pano.html'),'utf8');
-await writeFile(join(output,'pano.html'),boardPage.replace('./pano.js','./static/'+panoScript).replace('./pano.css',panoCSS).replace('./assets/simit-kapak.webp',artURLs['simit-kapak']));
+await writeFile(join(output,'pano.html'),boardPage.replace('</head>',panoPreload+'\n</head>').replace('./pano.js','./static/'+panoScript).replace('./pano.css',panoCSS).replace('./pano-worker.js','./static/'+printer).replace('./assets/thumbs/simit-kapak.webp',thumbURLs['simit-kapak']));
 const html = await readFile(join(root, 'index.html'), 'utf8');
 const preload=[
-  ...[script,...imports].map(file=>'<link rel="modulepreload" href="./static/'+file+'">'),
+  gamePreload,
   '<link rel="preload" as="image" href="'+artURLs['kahvalti-tabagi']+'">'
 ].join('\n  ');
 await writeFile(join(output, 'index.html'), html

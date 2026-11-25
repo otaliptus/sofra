@@ -2,6 +2,8 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preload" as="fetch" href="/api/pano?sort=new" crossorigin>
+  <meta name="pano-printer" content="./pano-worker.js">
   <meta name="theme-color" content="#f5efe2"><meta name="description" content="Sofra’da hazırlanan kahvaltılar. Tarifini panoya as, beğendiğin sofraya oy ver.">
   <link rel="icon" href="data:,"><title>Sofra Panosu</title><link rel="stylesheet" href="./pano.css">
 </head>
@@ -16,7 +18,7 @@
     </nav>
     <p id="status" role="status">Tarifler yükleniyor…</p>
     <section id="pins" aria-label="Asılı tarifler"></section>
-    <div id="empty" hidden><span class="empty-pin" aria-hidden="true"></span><img src="./assets/simit-kapak.webp" alt=""><h2></h2><p></p><a href="./">Soframı hazırla ↗</a></div>
+    <div id="empty" hidden><span class="empty-pin" aria-hidden="true"></span><img loading="lazy" src="./assets/thumbs/simit-kapak.webp" alt=""><h2></h2><p></p><a href="./">Soframı hazırla ↗</a></div>
     <button id="more" hidden>Daha fazla göster</button>
   </main>
   <dialog id="post"><div class="detail">
