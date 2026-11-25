@@ -1,4 +1,5 @@
 import {assetURL} from './asset-url.js';
+import {unpackTeaLight} from './tea-light.js';
 import {breads,cloths,pantry,wholeCuts} from './recipe.js';
 
 export const art=Object.create(null);
@@ -9,7 +10,7 @@ export const clothArt=id=>id==='gazete'?['kareli-bezi',cloths.gazete.asset]:[clo
 export function foodArt(id){
   const food=pantry[id];
   if(food.bread)return breadArt(food.bread);
-  if(id==='cay')return ['cay','tea-saucer'];
+  if(id==='cay')return ['cay','tea-saucer','tea-light'];
   if(food.drink)return [id.endsWith('-sut')?'milk-art':'drink-art'];
   if(food.paste)return ['smear-'+id];
   if(id==='cream'||id==='jam')return ['servings','serving-relief','smear-'+id];
@@ -32,9 +33,12 @@ export async function decodeImage(id,urlFor=assetURL){
 export function prepareArt(ids,loadImage=decodeImage){
   const jobs=[];
   for(const id of new Set(ids)){
-    if(art[id])continue;
+    if(Object.hasOwn(art,id))continue;
     if(!loading.has(id)){
-      loading.set(id,loadImage(id).then(image=>{art[id]=image;}).finally(()=>loading.delete(id)));
+      const image=loadImage(id);
+      // The tea service can generate its lighting locally if the baked map is unavailable.
+      const asset=id==='tea-light'?image.then(unpackTeaLight).catch(()=>null):image;
+      loading.set(id,asset.then(value=>{art[id]=value;}).finally(()=>loading.delete(id)));
     }
     jobs.push(loading.get(id));
   }

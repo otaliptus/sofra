@@ -95,9 +95,9 @@ function foilLid(parts,print,grain){
   pose(1);target.copy(grip);
   return {pose,grip,target};
 }
-function ayran(tiles){
+function ayran(tile){
   const g=new THREE.Group(),plastic=glaze(0xf6f1df,.34),blue=glaze(0x174577,.44);
-  const label=tiles[4].clone();label.wrapS=THREE.RepeatWrapping;label.repeat.x=2;label.offset.x=.5;
+  const label=tile(4).clone();label.wrapS=THREE.RepeatWrapping;label.repeat.x=2;label.offset.x=.5;
   add(g,lathe([[0,0],[.066,0],[.073,.005],[.075,.019],[.099,.216],[.104,.222],[.103,.227]]),plastic);
   add(g,lathe([[.077,.025],[.0998,.215]]),glaze(0xffffff,.48,label));
   for(const y of [.011,.017])add(g,lathe([[.075,y-.001],[.076,y],[.075,y+.001]]),plastic);
@@ -118,7 +118,7 @@ function ayran(tiles){
   add(g,foam,glaze(0xfffcf2,.18));
   const perimeter=circle(.111);perimeter.push([.043,.126]);
   const grain=foilGrain();
-  return openable(g,perimeter,circle(.063,8),(x,z)=>Math.hypot(x,z)<=.111 ? .230 : 0,parts=>foilLid(parts,tiles[3],grain));
+  return openable(g,perimeter,circle(.063,8),(x,z)=>Math.hypot(x,z)<=.111 ? .230 : 0,parts=>foilLid(parts,tile(3),grain));
 }
 const juices={
   'portakal-suyu':{tile:0,flavor:'PORTAKAL',body:0xe79a22,side:0xeeb23b,ink:0x47622d},
@@ -190,11 +190,11 @@ function drinkingStraw(parts,port,ink){
   }
   return {pose,grip,target,straw};
 }
-function carton(style,tiles){
+function carton(style,tile){
   const g=new THREE.Group(),w=.164,d=.119,h=.264;
   const plain=glaze(style.body,.6),side=glaze(style.side,.64),edge=glaze(style.ink,.59);
-  const print=glaze(0xffffff,.64,tiles[style.tile]);
-  const panel=glaze(0xffffff,.63,cartonSide(style,tiles[style.tile]));
+  const print=glaze(0xffffff,.64,tile(style.tile));
+  const panel=glaze(0xffffff,.63,cartonSide(style,tile(style.tile)));
   add(g,new THREE.BoxGeometry(w,h,d),[panel,panel,plain,plain,print,print],0,h/2);
   // Folded top flap, heat seal, and foil straw port on a single-serve carton.
   const flap=add(g,new THREE.BoxGeometry(w*.96,.004,d*.47),side,0,h+.001,-d*.23);
@@ -217,14 +217,14 @@ function carton(style,tiles){
   return openable(g,perimeter,[[0,0],[-ax,-az],[ax,-az],[ax,az],[-ax,az]],(x,z)=>Math.abs(x)<=ax&&Math.abs(z)<=az?h+.005:0,
     parts=>drinkingStraw(parts,port.position,style.ink));
 }
-function coffee(turkish,tiles){
+function coffee(turkish,tile){
   const g=new THREE.Group(),base=turkish ? .012:0,r=turkish ? .069:.106,h=turkish ? .129:.193;
   const porcelain=glaze(turkish?0xfff6e2:0xbd7440,.27),inside=glaze(turkish?0xfff9e9:0xeaddc2,.25);
   if(turkish){
     const saucer=lathe([[0,.002],[.072,.002],[.086,.004],[.135,.014],[.159,.023],[.160,.026],[.154,.028],[.137,.024],[.098,.013],[.072,.011],[0,.012]]);
-    add(g,planar(saucer,.337),glaze(0xffffff,.28,tiles[5]));
+    add(g,planar(saucer,.337),glaze(0xffffff,.28,tile(5)));
   }
-  const pattern=turkish?tiles[8].clone():null;
+  const pattern=turkish?tile(8).clone():null;
   if(pattern){pattern.wrapS=THREE.RepeatWrapping;pattern.repeat.x=3;}
   const body=lathe([[0,.001],[r*.63,.001],[r*.67,h*.022],[r*.67,h*.08],[r*.78,h*.13],
     [r*.88,h*.26],[r*.96,h*.55],[r,h*.93],[r,h*.99]]);
@@ -245,7 +245,7 @@ function coffee(turkish,tiles){
   add(g,new THREE.TubeGeometry(curve,32,turkish ? .0068:.011,12,false),porcelain,0,base);
   const coffeeY=h*(turkish ? .916:.87),liquidR=r*.938;
   const liquid=lathe([[liquidR,coffeeY+.0016],[liquidR*.96,coffeeY],[liquidR*.84,coffeeY-.0004],[0,coffeeY-.0004]]);
-  add(g,planar(liquid,liquidR*2),glaze(0xffffff,turkish ? .82:.25,tiles[turkish?7:6]),0,base);
+  add(g,planar(liquid,liquidR*2),glaze(0xffffff,turkish ? .82:.25,tile(turkish?7:6)),0,base);
   const outer=turkish ? .16:r,perimeter=circle(outer);
   if(!turkish)perimeter.push([r*reach+.012,0]);
   return vessel(g,perimeter,circle(turkish ? .065:r*.62,8),(x,z)=>{
@@ -257,21 +257,25 @@ function coffee(turkish,tiles){
 function printTiles(atlas,rows){
   // Each tile gets its own mip chain so the paper and porcelain stay crisp
   // without bleeding into neighbouring prints at shelf size.
-  return Array.from({length:3*rows},(_,i)=>{
-    const w=atlas.width/3,h=atlas.height/rows;
-    const canvas=canvasSurface(Math.round(w),Math.round(h));
-    canvas.getContext('2d').drawImage(atlas,(i%3)*w,Math.floor(i/3)*h,w,h,0,0,canvas.width,canvas.height);
-    const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;return texture;
-  });
+  const tiles=new Map();
+  return index=>{
+    if(!tiles.has(index)){
+      const w=atlas.width/3,h=atlas.height/rows;
+      const canvas=canvasSurface(Math.round(w),Math.round(h));
+      canvas.getContext('2d').drawImage(atlas,(index%3)*w,Math.floor(index/3)*h,w,h,0,0,canvas.width,canvas.height);
+      const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
+      tiles.set(index,texture);
+    }
+    return tiles.get(index);
+  };
 }
 export function createDrinkFactory(atlas,milkArt){
-  let tiles,milkTiles;
+  const tile=printTiles(atlas,3),milkTile=printTiles(milkArt,1);
   return id=>{
-    if(milks[id])return carton({...milks[id],milk:true},milkTiles??=printTiles(milkArt,1));
-    tiles??=printTiles(atlas,3);
-    if(id==='ayran')return ayran(tiles);
-    if(juices[id])return carton(juices[id],tiles);
-    return coffee(id==='turk-kahvesi',tiles);
+    if(milks[id])return carton({...milks[id],milk:true},milkTile);
+    if(id==='ayran')return ayran(tile);
+    if(juices[id])return carton(juices[id],tile);
+    return coffee(id==='turk-kahvesi',tile);
   };
 }
 

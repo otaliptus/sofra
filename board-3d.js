@@ -86,8 +86,8 @@ function sideGeometry(mask,width,height,depth,bread,topY,crown){
   geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   return geo;
 }
-function makeFood(image,width,depth,{crust=null,dome=false,rounded=false,egg=false,flex=false,cutFace=null,ring=false}={}){
-  const height=width*image.height/image.width,mask=outline(image,ring?384:120),group=new THREE.Group();
+function makeFood(map,width,depth,{crust=null,dome=false,rounded=false,egg=false,flex=false,cutFace=null,ring=false}={}){
+  const image=map.image,height=width*image.height/image.width,mask=outline(image,ring?384:120),group=new THREE.Group();
   // Fit a smooth dome to the orange yolk. The white gleam in its photograph
   // is a reflection, so it must never become a depression in the mesh.
   let yolk;
@@ -113,7 +113,7 @@ function makeFood(image,width,depth,{crust=null,dome=false,rounded=false,egg=fal
     const r=((u-yolk.x)/yolk.rx)**2+((v-yolk.y)/yolk.ry)**2;
     return depth*(.16+.84*Math.exp(-1.22*r*r));
   }
-  const segments=cutFace||rounded?64:dome||flex||egg?32:1,map=texture(image);
+  const segments=cutFace||rounded?64:dome||flex||egg?32:1;
   const geom=shell?shell.top:new THREE.PlaneGeometry(width,height,segments,segments);
   if(!shell){
     geom.rotateX(-Math.PI/2);const points=geom.attributes.position;
@@ -127,7 +127,7 @@ function makeFood(image,width,depth,{crust=null,dome=false,rounded=false,egg=fal
   if(cutFace||shell){
     const bottom=shell?shell.bottom:new THREE.PlaneGeometry(width,height);
     const underside=new THREE.Mesh(bottom,new THREE.MeshLambertMaterial({
-      map:cutFace?texture(cutFace):map,alphaTest:shell?0:.48,side:shell?THREE.FrontSide:THREE.BackSide}));
+      map:cutFace||map,alphaTest:shell?0:.48,side:shell?THREE.FrontSide:THREE.BackSide}));
     if(!shell)bottom.rotateX(-Math.PI/2);
     underside.receiveShadow=true;group.add(underside);
   }
@@ -204,7 +204,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     if(breadId===id)return;
     if(bread)bread.group.visible=false;
     if(!loafCache.has(id)){
-      const spec=breads[id],food=makeFood(art[spec.asset],1,spec.depth,{crust:crustFor(id),ring:id==='simit'});
+      const spec=breads[id],food=makeFood(assetTexture(spec.asset),1,spec.depth,{crust:crustFor(id),ring:id==='simit'});
       scene.add(food.group);loafCache.set(id,food);
     }
     bread=loafCache.get(id);breadId=id;bread.group.visible=true;
@@ -215,7 +215,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
   function foodModel(id){
     if(blanks[id])return blanks[id];
     const item=pantry[id];
-    if(id==='cay'){teaImages.cay=art.cay;blanks[id]=createTeaService(renderer,art['tea-saucer']);}
+    if(id==='cay'){teaImages.cay=art.cay;blanks[id]=createTeaService(renderer,art['tea-saucer'],art['tea-light']);}
     else if(item.drink){
       const atlas=id.endsWith('-sut')?'milk-art':'drink-art';
       if(!drinkFactories.has(atlas))drinkFactories.set(atlas,createDrinkFactory(art['drink-art'],art['milk-art']));
@@ -223,8 +223,8 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     }
     else if(item.bread){
       const b=breads[item.bread],ring=item.bread==='simit';
-      blanks[id]=makeFood(art[b.crown],1,b.crownDepth,{crust:crustFor(item.bread),cutFace:art[b.asset],ring,flex:ring});
-    }else blanks[id]=makeFood(art[item.asset||id],item.size,item.depth,{
+      blanks[id]=makeFood(assetTexture(b.crown),1,b.crownDepth,{crust:crustFor(item.bread),cutFace:assetTexture(b.asset),ring,flex:ring});
+    }else blanks[id]=makeFood(assetTexture(item.asset||id),item.size,item.depth,{
       dome:id.endsWith('-olive'),rounded:id==='avokado'||id==='yogurt',egg:id==='fried-egg'||id==='egg-slice',
       flex:['pastirma','parsley','kasar','onion','red-onion','fried-egg'].includes(id)
     });
@@ -367,7 +367,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
       const {target,distance,tan}=saved.frame;
       photoSetup={target:new THREE.Vector3(...target),distance,tan};
     }else if(view)photoSetup=composePhoto(subjectPoints(),orbit,photoLens);
-    if(printOnly)cameraPosition();else resize();
+    if(printOnly){cameraPosition();renderer.shadowMap.needsUpdate=true;}else resize();
   }
   function refreshCover(){
     placeCover();
@@ -691,7 +691,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
       placed.push({piece:p,i,ref,template,c,s,extentX,extentZ,stable,state:JSON.stringify(p)});
     }
     for(const {node} of reusable.values())releaseNode(node);
-    if(printOnly)return;
+    if(printOnly){renderer.shadowMap.needsUpdate=true;return;}
     placeCover();
     if(!view&&fitView){measureEditor();cameraPosition();}
     render();
@@ -763,7 +763,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     if(printOnly){
       if(canvas.width!==pixels||canvas.height!==pixels)renderer.setDrawingBufferSize(pixels,pixels,1);
       photoCamera.aspect=1;photoCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(photoSetup.tan));
-      photoCamera.updateProjectionMatrix();renderer.shadowMap.needsUpdate=true;
+      photoCamera.updateProjectionMatrix();
       photoFocus.render(scene,photoCamera,photoSetup,pixels);
       return canvas;
     }

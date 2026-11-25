@@ -8,7 +8,7 @@ const [lipRadius,glassHeight]=profile.at(-1);
 const rimRadius=lipRadius*glassScale,depth=cupBase+glassHeight*glassScale;
 const lathe=points=>new THREE.LatheGeometry(points.map(([r,y])=>new THREE.Vector2(r,y)),72);
 
-function reflections(renderer){
+export function renderTeaLight(renderer){
   const w=128,h=64,pixels=new Float32Array(w*h*4);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const u=x/w,v=y/h,i=4*(y*w+x);
@@ -20,13 +20,20 @@ function reflections(renderer){
   const panorama=new THREE.DataTexture(pixels,w,h,THREE.RGBAFormat,THREE.FloatType);
   panorama.mapping=THREE.EquirectangularReflectionMapping;panorama.needsUpdate=true;
   const pmrem=new THREE.PMREMGenerator(renderer),map=pmrem.fromEquirectangular(panorama);
-  pmrem.dispose();panorama.dispose();return map.texture;
+  pmrem.dispose();panorama.dispose();return map;
+}
+function reflections(renderer,faces){
+  if(!faces)return renderTeaLight(renderer).texture;
+  // This Three.js texture accepts a full mip chain per face, including raw RGBA.
+  const map=new THREE.CompressedCubeTexture(faces,THREE.RGBAFormat,THREE.HalfFloatType);
+  map.colorSpace=THREE.LinearSRGBColorSpace;map.minFilter=THREE.LinearMipmapLinearFilter;
+  map.isPMREMTexture=true;map.needsUpdate=true;return map;
 }
 function mesh(geometry,material,name){
   const m=new THREE.Mesh(geometry,material);m.name=name;m.receiveShadow=true;return m;
 }
-export function createTeaService(renderer,art){
-  const envMap=reflections(renderer),form=new THREE.Group();
+export function createTeaService(renderer,art,light){
+  const envMap=reflections(renderer,light),form=new THREE.Group();
   const porcelainMap=new THREE.CanvasTexture(art);porcelainMap.colorSpace=THREE.SRGBColorSpace;porcelainMap.anisotropy=4;
   const porcelain=new THREE.MeshStandardMaterial({map:porcelainMap,color:0xe4ded4,roughness:.37,envMap,envMapIntensity:.25,side:THREE.DoubleSide});
   const saucerProfile=[[0,.003],[.065,.002],[.10,.004],[.128,.009],[.150,.017],[.160,.022],[.158,.026],[.15,.027],[.126,.02],[.10,.012],[.072,.010],[0,.011]];

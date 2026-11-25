@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
 import {cloths,emptyRecipe,ingredients} from '../recipe.js';
-import {foodArt,prepareArt,recipeArt} from '../board-art.js';
+import {art,foodArt,prepareArt,recipeArt} from '../board-art.js';
 
 test('cold scenes request their own artwork, including saved marks and sliced ingredients',()=>{
   assert.deepEqual([...recipeArt(emptyRecipe())].sort(),
@@ -19,6 +19,17 @@ test('cold scenes request their own artwork, including saved marks and sliced in
     for(const id of foodArt(item.id))assert.ok(existsSync(new URL('../assets/'+id+'.webp',import.meta.url)),id);
   }
   for(const cloth of Object.values(cloths))assert.ok(existsSync(new URL('../assets/thumbs/'+cloth.asset+'.webp',import.meta.url)));
+});
+
+test('only tea requests the baked reflections and its fallback survives a missing map',async t=>{
+  t.after(()=>{delete art['tea-light'];});
+  for(const food of ingredients)assert.equal(foodArt(food.id).includes('tea-light'),food.id==='cay');
+  let calls=0;
+  const unavailable=async()=>{calls++;throw Error('offline');};
+  await Promise.all([prepareArt(['tea-light'],unavailable),prepareArt(['tea-light'],unavailable)]);
+  assert.equal(art['tea-light'],null);
+  assert.equal(prepareArt(['tea-light'],unavailable),null);
+  assert.equal(calls,1);
 });
 
 test('concurrent requests share a decode, warm artwork is synchronous, failed requests can retry',async t=>{
