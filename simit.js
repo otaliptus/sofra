@@ -21,7 +21,7 @@ const storeKey='sofra.simit.workbench.v2';
 function read(key){try{return localStorage.getItem(key)}catch{return null}}
 function write(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}}
 function draft(){try{return JSON.parse(read(storeKey));}catch{return null;}}
-const shared=recipeFromHash(location.hash),stored=draft(),savedRecipe=readRecipe(stored);
+const stored=draft(),savedRecipe=readRecipe(stored);
 let recipe=savedRecipe||emptyRecipe();
 function selectionFor(index){
   if(index===coverSelection&&!recipe.coverRemoved)return coverSelection;
@@ -30,7 +30,6 @@ function selectionFor(index){
 }
 let board,selected=selectionFor(stored?.editSelection),brush=null,gesture=null,mode='edit',angle='tilt',snapshot=null;
 const historyStack=editHistory(savedRecipe&&stored?.editHistory);
-if(shared)history.replaceState(null,'',location.pathname+location.search);
 const music=mountMusic(read('sofra.sound')==='off',muted=>write('sofra.sound',muted?'off':'on'));
 let audioContext,noticeTimer,teaFrame=0,drinkService=null,albumDB;
 let wheelTurn=null;
@@ -751,15 +750,27 @@ document.addEventListener('keydown',e=>{
 new ResizeObserver(()=>requestAnimationFrame(showHandle)).observe(stage);
 window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
 window.advanceTime=ms=>board?.step(ms);
+function openSharedLink(){
+  if(!board)return;
+  const shared=recipeFromHash(location.hash);
+  if(!shared)return;
+  // A link opened during another interaction gets the normal fresh-page preview.
+  if(gesture||mode==='camera'||(sheet.open&&!$('#shared-print'))){location.reload();return;}
+  history.replaceState(null,'',location.pathname+location.search);
+  let print;
+  try{
+    board.sync(shared);board.setView('tilt');print=board.capture(480);
+  }finally{
+    board.setView(null);board.sync(recipe);showHandle();
+  }
+  dialog('Paylaşılan sofra','<div id="shared-print"></div><div class="buttons"><button id="import-recipe" class="primary">Sofraya ekle</button><button id="keep-draft">Soframda kal</button></div>');
+  print.className='print';$('#shared-print').append(print);
+  $('#keep-draft').onclick=()=>sheet.close();
+  $('#import-recipe').onclick=()=>{checkpoint();recipe=shared;selected=-1;chooseBrush(null);sheet.close();update();};
+}
+window.addEventListener('hashchange',openSharedLink);
 try{
   board=await createBoard(canvas);update();$('#shutter').disabled=$('#grand-reset').disabled=false;
   hint(recipe.coverRemoved||recipe.pieces.length||recipe.strokes.length?'':'Üst parçayı tutup taşıyabilirsin.',3600);
-  if(shared){
-    board.sync(shared);board.setView('tilt');
-    const print=board.capture(480);board.setView(null);board.sync(recipe);
-    dialog('Paylaşılan sofra','<div id="shared-print"></div><div class="buttons"><button id="import-recipe" class="primary">Sofraya ekle</button><button id="keep-draft">Soframda kal</button></div>');
-    print.className='print';$('#shared-print').append(print);
-    $('#keep-draft').onclick=()=>sheet.close();
-    $('#import-recipe').onclick=()=>{checkpoint();recipe=shared;selected=-1;sheet.close();update();};
-  }
+  openSharedLink();
 }catch(err){console.error(err);hint('Sofra açılamadı. WebGL destekli bir tarayıcıda yenile.',0);}
