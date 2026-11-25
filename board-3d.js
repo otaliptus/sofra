@@ -294,24 +294,33 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     return points;
   }
   const editorBoxes=[];
-  let stackBlend=0;
+  let maxFocusHeight=0;
   function measureEditor(){
     editorBoxes.length=0;
     let stackHeight=0;
-    function include(group,drinkBase){
-      const box=new THREE.Box3().setFromObject(group);
+    // The bottom bread fits inside the plate. The untouched spare rests on the cloth.
+    nodes.forEach((node,i)=>{
+      const box=new THREE.Box3().setFromObject(node);
       editorBoxes.push(box);
-      stackHeight=Math.max(stackHeight,drinkBase??box.max.y);
+      stackHeight=Math.max(stackHeight,pantry[recipe.pieces[i].food].drink?heights[i]:box.max.y);
+    });
+    if(lid?.group.visible&&tableCoverFor(recipe)!=='side'){
+      // Use the crust outline so a transparent corner cannot zoom out a turned lid.
+      const bounds=new THREE.Box3().setFromObject(lid.group),outline=new THREE.Box3(),point=new THREE.Vector3();
+      for(const [x,z] of lid.perimeter){
+        outline.expandByPoint(point.set(x,0,z).applyMatrix4(lid.group.matrixWorld));
+        outline.expandByPoint(point.set(x,lid.depth,z).applyMatrix4(lid.group.matrixWorld));
+      }
+      outline.min.y=bounds.min.y;outline.max.y=bounds.max.y;
+      editorBoxes.push(outline);stackHeight=Math.max(stackHeight,bounds.max.y);
     }
-    if(bread?.group.visible)include(bread.group);
-    nodes.forEach((node,i)=>include(node,pantry[recipe.pieces[i].food].drink?heights[i]:undefined));
-    if(lid?.group.visible)include(lid.group);
-    stackBlend=THREE.MathUtils.smoothstep(stackHeight,.28,1.18);
+    const stackBlend=THREE.MathUtils.smoothstep(stackHeight,.28,1.18);
+    maxFocusHeight=.5*stackHeight*stackBlend;
     if(!editPose)orbit={yaw:0,elevation:Math.PI/2-.88*stackBlend};
   }
   function cameraPosition(){
     if(view)aimCamera(photoCamera,orbit,photoSetup.target,photoSetup.distance);
-    else if(viewportWidth&&viewportHeight)fitEditorCamera(editorCamera,orbit,editorBoxes,viewportWidth,viewportHeight,plateRadius,stackBlend);
+    else if(viewportWidth&&viewportHeight)fitEditorCamera(editorCamera,orbit,editorBoxes,viewportWidth,viewportHeight,plateRadius,maxFocusHeight);
   }
   let viewportWidth=0,viewportHeight=0;
   function resize(draw=true){

@@ -76,10 +76,21 @@ try{
   await scene.evaluate(el=>el.addEventListener('pointerdown',e=>{window.finger=e.pointerId;},{once:true}));
   await page.mouse.move(bounds.x+bounds.width*.5,bounds.y+bounds.height*.5);
   await page.mouse.down({button:'right'});await state('gesture','orbit');
-  await page.mouse.move(bounds.x+bounds.width*.52,bounds.y+bounds.height*.5);
+  await page.mouse.move(bounds.x+bounds.width*.66,bounds.y+bounds.height*.58);
   await scene.evaluate(el=>el.releasePointerCapture(window.finger));
   await page.mouse.move(bounds.x+bounds.width*.54,bounds.y+bounds.height*.5);
   await state('gesture',null);await page.mouse.up({button:'right'});
+  // Removing the parked half should leave the center of the dish exactly where it was.
+  const centerOfDish=()=>scene.evaluate(async canvas=>{
+    await new Promise(requestAnimationFrame);
+    const sample=document.createElement('canvas');sample.width=sample.height=64;
+    sample.getContext('2d').drawImage(canvas,(canvas.width-64)/2,(canvas.height-64)/2,64,64,0,0,64,64);
+    return sample.toDataURL();
+  });
+  const withSpare=await centerOfDish();
+  await scene.press(']');await scene.press('Delete');await state('coverRemoved',true);
+  assert.equal(await centerOfDish(),withSpare,'orbit framing is independent of the parked bread');
+  await click('undo-action');await state('photoCover','side');
   await click('shutter');await state('mode','camera');
   await click('back');
   const radioState=phase=>page.waitForFunction(p=>JSON.parse(render_game_to_text()).music.phase===p,phase);
