@@ -57,8 +57,13 @@ export async function checkPicking(browser,base){
     await drag('touchStart',{x:cx,y:edge-1});assert.equal((await state()).gesture,'piece');
     await drag('touchMove',{x:cx+12,y:edge-1});await drag('touchEnd');
     assert.notEqual((await state()).pieces[0].x,0);
+    // The browser may deliver a compatibility double-click on the empty canvas
+    // immediately after a quick release. Reproduce it independently of timing.
+    await canvas.dispatchEvent('dblclick',{clientX:cx,clientY:box.y+20});
     assert.deepEqual((await state()).camera,pose);
     await page.locator('#undo-action').click();assert.equal((await state()).pieces[0].x,0);
+    await page.mouse.dblclick(cx,box.y+20);
+    assert.deepEqual((await state()).camera,{yaw:0,elevation:Math.PI/2});
 
     await load(['black-ring']);
     const hole=await canvas.evaluate((el,{cx,cy})=>{
