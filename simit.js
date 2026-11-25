@@ -414,9 +414,10 @@ function begin(e){
       canvas.dataset.cursor='held';hint('');showHandle();return;
     }
   }
-  const hit=mode==='edit'&&board.pick(e.clientX,e.clientY,!brush);
+  const hit=e.button===0&&mode==='edit'&&board.pick(e.clientX,e.clientY,!brush);
   if(mode==='camera'||(recipe.closed&&!movablePiece(hit?.i))||e.button===2||!hit){
-    gesture={kind:'orbit',id:e.pointerId,px:e.clientX,py:e.clientY,startX:e.clientX,startY:e.clientY,moved:false};canvas.dataset.cursor='held';knife.hidden=true;return;
+    gesture={kind:'orbit',id:e.pointerId,px:e.clientX,py:e.clientY,startX:e.clientX,startY:e.clientY,moved:false,
+      assist:e.button===0&&e.pointerType==='touch'&&mode==='edit'&&!brush&&!hit};canvas.dataset.cursor='held';knife.hidden=true;return;
   }
   if(brush){
     if(!edible(hit)||countMarks()>=200){hint(edible(hit)?'Tabak dolu.':'Ekmeğe veya bir malzemeye dokun.');return;}
@@ -450,7 +451,7 @@ function move(e){
   }
   moveKnife(e);
   if(!gesture){
-    const hit=board.pick(e.clientX,e.clientY);
+    const hit=board.pick(e.clientX,e.clientY,!brush);
     if(brush&&!edible(hit))knife.hidden=true;
     canvas.dataset.cursor=(edible(hit)&&pantry[brush]?.kind)||(hit?.i>=0?'move':hit?'':'orbit');return;
   }
@@ -499,7 +500,13 @@ function ended(e){
   if(g.kind==='cover-move'&&g.moved){
     if(outcome==='commit')keepCover();else board.restoreCover();
   }
-  if(g.kind==='orbit'&&!g.moved&&outcome==='commit'&&mode==='edit'){chooseBrush(null);selected=-1;}
+  if(g.kind==='orbit'&&!g.moved&&outcome==='commit'&&mode==='edit'){
+    const near=g.assist&&Math.hypot(e.clientX-g.startX,e.clientY-g.startY)<3?board.nearbyTap(g.startX,g.startY):null;
+    chooseBrush(null);selected=-1;
+    if(near==='cover')selected=coverSelection;
+    else if(near===-1&&!recipe.closed)selected=breadSelection;
+    else if(near!==null&&movablePiece(near)){selected=near;openDrink();}
+  }
   if(g.kind==='ink'){
     knife.classList.remove('pressing');knife.style.removeProperty('--paste-load');
     cancelAnimationFrame(g.holdFrame);cancelAnimationFrame(paintFrame);paintFrame=0;

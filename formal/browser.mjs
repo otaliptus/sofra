@@ -1,5 +1,6 @@
 // Check event delivery in a real browser. All board API calls are intercepted.
 import assert from 'node:assert/strict';
+import {checkPicking} from './picking.mjs';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
@@ -182,4 +183,5 @@ try{
   assert.deepEqual(errors,[]);
   console.log('Board: both finished photo sizes survive a reload with WebGL disabled.');
 
+  await checkPicking(browser,base);
 }finally{await browser.close();}

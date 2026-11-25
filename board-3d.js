@@ -7,6 +7,7 @@ import { createDrinkFactory } from './drinks.js?v=perf';
 import { createTeaService } from './tea-glass.js?v=servings';
 import { setTable, tableHeight, plateRadius, clothHeight } from './table-setting.js?v=gazete';
 import { aimCamera, composePhoto, fitEditorCamera, presetPose } from './photo-camera.js';
+import { createFoodPicker, intersectStrips, outsideFootprint, pickTarget } from './food-picker.js';
 import { createCoating } from './food-marks.js?v=salca';
 import { breads, cloths, emptyRecipe, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from './recipe.js?v=gazete';
 import { simitRing } from './simit-ring.js';
@@ -250,6 +251,8 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
   }
   let recipe={strokes:[],pieces:[]},nodes=[],heights=[],offsets=[],ghost=null,ghostModel=null,hover=null,view=null,raf=0,clock=0;
   const placed=[];
+  const nearestFood=createFoodPicker();
+  let selectionTargets=null;
   let supportBread=null,breadMarks='';
   let orbit={yaw:0,elevation:Math.PI/2},editPose=null,photoLens='tilt';
   let editorAspect=1;
@@ -358,7 +361,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
   function setView(id,saved){
     if(id&&!view){
       for(const p of landing.keys()){
-        const i=recipe.pieces.indexOf(p);if(i>=0)position(nodes[i],p,heights[i]);
+        const i=recipe.pieces.indexOf(p);if(i>=0){position(nodes[i],p,heights[i]);invalidatePose(i);}
       }
       landing.clear();
       for(const fall of falls)scene.remove(fall.node);
@@ -401,31 +404,26 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     }
     surface.constant=-y;ray.ray.intersectPlane(surface,point3);return {x:point3.x,z:point3.z};
   }
-  function pick(clientX,clientY,relief=true){
+  function pick(clientX,clientY,grab=true){
     setRay(clientX,clientY);
-    const faces=bread.group.visible?[bread.top]:[],indices=new Map([[bread.top,-1]]);
-    if(bread.group.visible&&relief&&bread.coating?.mesh.visible){faces.push(bread.coating.mesh);indices.set(bread.coating.mesh,-1);}
-    nodes.forEach((node,i)=>{
-      const id=recipe.pieces[i].food;
-      const parts=id==='cay'?[node.getObjectByName('saucer'),node.getObjectByName('glass')]:[];
-      if(id!=='cay'){
-        if(pantry[id].drink)node.traverseVisible(part=>{if(part.isMesh)parts.push(part);});
-        else parts.push(node.children[0]);
+    if(!selectionTargets){
+      selectionTargets=[];
+      if(bread.group.visible)selectionTargets.push(pickTarget(bread.group,bread,-1,breadId,false,bread.coating));
+      for(const entry of placed){
+        const {i,ref,piece}=entry;
+        entry.pickTarget??=pickTarget(nodes[i],ref,i,piece.food,pantry[piece.food].drink,coatings.get(piece));
+        selectionTargets.push(entry.pickTarget);
       }
-      const coating=coatings.get(recipe.pieces[i]);
-      if(relief&&coating?.mesh.visible)parts.push(coating.mesh);
-      for(const face of parts){faces.push(face);indices.set(face,i);}
-    });
-    const hits=ray.intersectObjects(faces,false);
-    for(const h of hits){
-      const index=indices.get(h.object);
-      const ref=index<0?bread:modelFor(recipe.pieces[index]),u=h.uv.x,v=1-h.uv.y;
-      const coat=index<0?bread.coating:coatings.get(recipe.pieces[index]);
-      if(coat?.mesh===h.object&&coat.rise(u,v)<.0005)continue;
-      if(!pantry[recipe.pieces[index]?.food]?.drink&&ref.mask.alpha(u,v)<.49)continue;
-      return {i:index,u,v,x:h.point.x,z:h.point.z,y:h.point.y,distance:h.distance};
     }
-    return null;
+    const hit=nearestFood(ray,selectionTargets,grab);
+    return hit&&grab&&behindPlate(hit.y,hit.distance)?null:hit;
+  }
+  function behindPlate(y,distance){
+    if(!plate.geometry.boundingBox)plate.geometry.computeBoundingBox();
+    if(y>plate.geometry.boundingBox.max.y)return false;
+    const hits=[];
+    intersectStrips(ray,plate,hits);
+    return hits.length>0&&hits[0].distance<distance-.001;
   }
   function screen(x,y,z){
     const p=new THREE.Vector3(x,y,z).project(camera);return {x:(p.x+1)*.5*canvas.clientWidth,y:(1-p.y)*.5*canvas.clientHeight};
@@ -485,6 +483,9 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     return {height,sx,sz};
   }
   function position(group,p,h){group.position.set(p.x,h,p.z);group.rotation.set(0,p.a,0);group.scale.x=localX(p,1);}
+  function invalidatePose(i){
+    if(placed[i]?.pickTarget)placed[i].pickTarget.dirty=true;
+  }
   function placeCover(){
     if(lid)lid.group.visible=false;
     const mode=view?photoCoverFor(recipe):tableCoverFor(recipe);
@@ -556,18 +557,49 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     const dx=point.x-center.x,dy=point.y-center.y,length=Math.hypot(dx,dy)||1;
     return {x:clamp(point.x+16*dx/length,23,canvas.clientWidth-23),y:clamp(point.y+16*dy/length,23,canvas.clientHeight-23),height:edge.y};
   }
-  function pickCover(clientX,clientY){
-    if(!coverPose())return null;
+  function pickCover(clientX,clientY,foreground){
+    if(!lid?.group.visible)return null;
     setRay(clientX,clientY);
-    const hits=ray.intersectObjects(lid.group.children,false);
+    const hits=[];
+    for(const mesh of lid.group.children)intersectStrips(ray,mesh,hits);
     const hit=hits.find(h=>h.object===lid.group.children[1]||lid.mask.alpha(h.uv.x,1-h.uv.y)>=.49);
     if(!hit)return null;
     // The glass, a filling or the plate can be in front of the crust in a low shot.
-    const foreground=pick(clientX,clientY);
+    if(foreground===undefined)foreground=pick(clientX,clientY);
     if(foreground&&foreground.distance<hit.distance-.001)return null;
-    const rim=ray.intersectObject(plate,false)[0];
-    if(rim&&rim.distance<hit.distance-.001)return null;
+    if(behindPlate(hit.point.y,hit.distance))return null;
     const anchor=lid.group.worldToLocal(hit.point.clone());anchor.y-=lid.bend?.(anchor.x,anchor.z)||0;return anchor;
+  }
+  function nearbyTap(x,y){
+    // Only called on a completed touch tap that missed. Each sample must hit
+    // a visible surface through the same camera, including lid and plate occlusion.
+    const rect=canvas.getBoundingClientRect();
+    setRay(x,y);
+    const centerRay=ray.ray.clone(),localRay=new THREE.Ray(),inverse=new THREE.Matrix4();
+    const local=new THREE.Vector3(),at=new THREE.Vector3(),plane=new THREE.Plane(new THREE.Vector3(0,1,0));
+    for(const radius of [3,6]){
+      for(let direction=0;direction<8;direction++){
+        const angle=direction*Math.PI/4,sx=x+radius*Math.cos(angle),sy=y+radius*Math.sin(angle);
+        if(sx<rect.left||sx>=rect.right||sy<rect.top||sy>=rect.bottom)continue;
+        const hit=pick(sx,sy),anchor=pickCover(sx,sy,hit);
+        if(!hit&&!anchor)continue;
+        const entry=hit?.i>=0?placed[hit.i]:null;
+        const ref=anchor?lid:entry?.ref??bread;
+        const node=anchor?lid.group:entry?nodes[entry.i]:bread.group;
+        if(anchor){
+          local.copy(anchor);
+          if(lid.bend)local.y+=lid.bend(local.x,local.z);
+        }else node.worldToLocal(local.set(hit.x,hit.y,hit.z));
+        plane.constant=-local.y;
+        localRay.copy(centerRay).applyMatrix4(inverse.copy(node.matrixWorld).invert());
+        if(!localRay.intersectPlane(plane,at))continue;
+        if(!anchor&&entry&&pantry[entry.piece.food].drink){
+          if(Math.abs(at.x)<=ref.width/2&&Math.abs(at.z)<=ref.height/2)continue;
+        }else if(!outsideFootprint(ref,at.x,at.z))continue;
+        return anchor?'cover':hit.i;
+      }
+    }
+    return null;
   }
   function coverPlanePoint(clientX,clientY,height){
     setRay(clientX,clientY);surface.constant=-height;
@@ -649,9 +681,10 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     if(node.userData.draped)for(const mesh of node.children)mesh.geometry.dispose();
   }
   function sync(r,settle=false,fitView=true){
+    selectionTargets=null;
     for(const [piece] of landing){
       const i=placed.findIndex(entry=>entry.piece===piece);
-      if(i>=0)position(nodes[i],piece,heights[i]);
+      if(i>=0){position(nodes[i],piece,heights[i]);invalidatePose(i);}
     }
     landing.clear();recipe=r;setCloth(r.cloth);activateBread(r.bread);
     bread.group.visible=!r.baseRemoved;
@@ -722,12 +755,16 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     if(coat.mesh.parent!==nodes[i])nodes[i].add(coat.mesh);
   }
   function paintBread(strokes){
-    paintLoaf(strokes);recipe.pieces.forEach(paintPiece);render();
+    paintLoaf(strokes);recipe.pieces.forEach(paintPiece);
+    selectionTargets=null;
+    for(const entry of placed)if(coatings.has(entry.piece))entry.pickTarget=null;
+    render();
   }
   function step(ms){
     clock+=ms;let moving=false;
     for(const [p,start] of landing){
       const i=recipe.pieces.indexOf(p),t=clamp((clock-start)/270,0,1);
+      invalidatePose(i);
       if(i<0||t===1){if(i>=0)position(nodes[i],p,heights[i]);landing.delete(p);continue;}
       const lift=.105*(1-t*t)*Math.max(0,1-t*1.45)+.011*Math.abs(Math.sin(t*13))*Math.pow(1-t,2);
       nodes[i].position.y=heights[i]+lift;nodes[i].rotation.z=.068*Math.sin(t*Math.PI*2)*(1-t);moving=true;
@@ -798,7 +835,7 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
       if(canvas.clientWidth!==viewportWidth||canvas.clientHeight!==viewportHeight)resize();
     }).observe(canvas);
   }
-  return {sync,xy,pick,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
+  return {sync,xy,pick,nearbyTap,support,lift,slip,paintBread,step,capture,setView,rotate,refreshCover,
     coverPose,coverHandle,pickCover,covers,coverPlanePoint,dragCover,
     placeCut(piece,index){
       const ref=modelFor(piece);
