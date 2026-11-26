@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="preload" as="fetch" href="/api/pano?sort=new" crossorigin>
-  <meta name="pano-printer" content="./pano-worker.js">
+  <meta name="pano-printer" content="./src/pano/worker.js">
   <meta name="theme-color" content="#f5efe2"><meta name="description" content="Sofra’da hazırlanan kahvaltılar. Tarifini panoya as, beğendiğin sofraya oy ver.">
-  <link rel="icon" href="data:,"><title>Sofra Panosu</title><link rel="stylesheet" href="./pano.css">
+  <link rel="icon" href="data:,"><title>Sofra Panosu</title><link rel="stylesheet" href="./src/pano/pano.css">
 </head>
 <body>
   <main>
@@ -34,5 +34,5 @@
     </div>
   </div></dialog>
   <div id="studio" aria-hidden="true"><canvas></canvas></div>
-  <script type="module" src="./pano.js"></script>
+  <script type="module" src="./src/pano/main.js"></script>
 </body></html>

@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {photoEdges,detailEdges,radioEdges,finishGesture,gestureOwners} from '../workflows.js';
+import {photoEdges,detailEdges,radioEdges,finishGesture,gestureOwners} from '../src/shared/workflows.js';
 
 const here=fileURLToPath(new URL('.',import.meta.url));
 if(!process.env.TLA2TOOLS_JAR)throw Error('Set TLA2TOOLS_JAR to the path to tla2tools.jar (tested with TLC 1.7.4).');

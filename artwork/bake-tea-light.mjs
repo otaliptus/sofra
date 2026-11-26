@@ -11,10 +11,10 @@ if(!['localhost','127.0.0.1','[::1]'].includes(site.hostname))throw Error('Serve
 const browser=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
   const page=await browser.newPage();
-  await page.goto(new URL('workbench.css',site).href);
-  const png=await page.evaluate(async()=>{
-    const THREE=await import('./node_modules/three/build/three.module.js');
-    const {renderTeaLight}=await import('./tea-glass.js');
+  await page.goto(new URL('src/editor/workbench.css',site).href);
+  const png=await page.evaluate(async base=>{
+    const THREE=await import(new URL('node_modules/three/build/three.module.js',base));
+    const {renderTeaLight}=await import(new URL('src/scene/tea-glass.js',base));
     const renderer=new THREE.WebGLRenderer(),gl=renderer.getContext(),cube=renderTeaLight(renderer);
     const levels=cube.texture.mipmaps,atlas=document.createElement('canvas');
     atlas.width=6*cube.width;atlas.height=2*levels.reduce((sum,level)=>sum+level.height,0);
@@ -41,7 +41,7 @@ try{
     }
     cube.dispose();renderer.dispose();
     return atlas.toDataURL('image/png').split(',')[1];
-  });
+  },site.href);
   const image=execFileSync('cwebp',['-quiet','-lossless','-m','6','-o','-','--','-'],{
     input:Buffer.from(png,'base64'),maxBuffer:8*1024*1024
   });

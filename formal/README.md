@@ -37,13 +37,13 @@ To run the browser regressions, build the game and serve the build on loopback i
 
 ```sh
 npm run build
-python3 -m http.server 4211 --bind 127.0.0.1 --directory dist
+python3 -m http.server 4173 --bind 127.0.0.1 --directory dist
 ```
 
 With Playwright and its Chromium browser installed, run the following in another terminal. The script intercepts all board writes. Use `SOFRA_LOCAL_URL` for a different local port and `PLAYWRIGHT_PATH` for a Playwright installation outside the project.
 
 ```sh
-node formal/browser.mjs
+npm run test:browser
 ```
 
 ## Coverage boundary

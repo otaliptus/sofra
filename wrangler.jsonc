@@ -10,7 +10,8 @@
     }
   ],
   "build": {
-    "command": "npm run build"
+    "command": "npm run build",
+    "watch_dir": ["src", "assets", "scripts/build.mjs", "index.html", "pano.html", "table.html", "worker/security-headers.mjs"]
   },
   "assets": {
     "binding": "ASSETS",

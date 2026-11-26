@@ -1,5 +1,5 @@
-import {editBread} from '../bread-state.js';
-import {breads,emptyRecipe,tableCoverFor,readRecipe,pantry} from '../recipe.js';
+import {editBread} from '../src/editor/bread-state.js';
+import {breads,emptyRecipe,tableCoverFor,readRecipe,pantry} from '../src/shared/recipe.js';
 
 // Enumerate one transition for every valid projected input, including inputs
 // restored from storage. The TLA+ postconditions are specified independently.

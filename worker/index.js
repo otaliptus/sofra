@@ -1,4 +1,4 @@
-import { shareableRecipe } from '../recipe.js';
+import { shareableRecipe } from '../src/shared/recipe.js';
 import { securityHeaders } from './security-headers.mjs';
 
 const root='/api/pano', rowLimit=8, bodyLimit=48*1024;
