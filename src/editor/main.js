@@ -1,5 +1,6 @@
 import {clothArt,foodArt,recipeArt,prepareArt} from '../scene/board-art.js';
 import {editBread} from './bread-state.js';
+import {breadStackMessage,exceedsBreadStack} from '../shared/bread-stack.js';
 import { workflow, photoEdges, finishGesture } from '../shared/workflows.js';
 import { boardWrite, publicURL } from '../pano/api.js';
 import { assetURL, thumbnailURL } from '../shared/asset-url.js';
@@ -98,6 +99,11 @@ function hint(message,duration=2600){
   clearTimeout(noticeTimer);const node=$('#coach');node.textContent=message;node.hidden=!message;
   if(message&&duration)noticeTimer=setTimeout(()=>node.hidden=true,duration);
 }
+function stackBlocked(next,top){
+  if(!exceedsBreadStack(next,top))return false;
+  hint(breadStackMessage);
+  return true;
+}
 function movablePiece(i){return !!recipe.pieces[i]&&(!recipe.closed||pantry[recipe.pieces[i].food].drink);}
 function showHandle(){
   const editing=mode==='edit'&&!gesture,cover=mode==='camera'||selected===coverSelection;
@@ -130,6 +136,7 @@ function showCoverChoice(){
 function keepCover(fromWheel=false){
   const pose=boundedCoverPose(board.coverPose());
   if(!pose)return;
+  if(stackBlocked(recipe,pose)){board.restoreCover();showHandle();return;}
   if(fromWheel)checkpointWheel('cover');else checkpoint();
   if(mode==='edit'){
     editBread(recipe,'placeTop',pose);
@@ -149,6 +156,7 @@ function lidButton(){
 }
 $('#lid').onclick=()=>{
   if(gesture||mode!=='edit'||recipe.baseRemoved||!breads[recipe.bread].closable)return;
+  if(!recipe.closed&&stackBlocked({...recipe,closed:true,coverRemoved:false}))return;
   checkpoint();editBread(recipe,'toggleLid');
   selected=-1;chooseBrush(null);update();
 };
@@ -158,13 +166,16 @@ function update(settle=false,focusPiece){
   describeCanvas();
 }
 function undo(){
-  if(gesture)return;
+  if(gesture||!historyStack.length)return;
   let entry,previous;
   while(!previous&&(entry=historyStack.peek())){
     try{previous=readRecipe(JSON.parse(entry.state));}catch{/* Skip an unreadable checkpoint. */}
+    // Old drafts can still be taken apart. Once back under the limit, undo
+    // should only restore a playable stack.
+    if(previous&&exceedsBreadStack(previous)&&!exceedsBreadStack(recipe))previous=null;
     if(!previous)historyStack.pop();
   }
-  if(!previous){showHandle();return;}
+  if(!previous){showHandle();save();return;}
   withArt(recipeArt(previous),()=>{
     if(historyStack.peek()?.state!==entry.state)return;
     historyStack.pop();wheelTurn=null;recipe=previous;selected=selectionFor(entry.selected);chooseBrush(null);update();
@@ -172,6 +183,7 @@ function undo(){
   });
 }
 function toggleBase(){
+  if(recipe.baseRemoved&&stackBlocked({...recipe,baseRemoved:false}))return;
   checkpoint();
   chooseBrush(null);
   editBread(recipe,'toggleBase',recipe.closed?board.coverPose():null);
@@ -272,6 +284,12 @@ $('#put-down').onclick=()=>{if(gesture)return;chooseBrush(null);canvas.focus({pr
 function makePiece(food,x,z){return {food,x:round(x),z:round(z),a:0,dem:0,water:0};}
 function releasePiece(p,previous=-1){
   if(pantry[p.food].bread||pantry[p.food].drink){p.x=clamp(p.x,-1.6,1.6);p.z=clamp(p.z,-1.6,1.6);}
+  if(pantry[p.food].bread){
+    p.x=round(p.x);p.z=round(p.z);
+    const pieces=recipe.pieces.filter((_,i)=>i!==previous);
+    pieces.push(p);
+    if(stackBlocked({...recipe,pieces}))return;
+  }
   const support=board.support(p,recipe.pieces.length,previous);
   if(previous<0 && !support.stable){board.slip(p);hint('Kaydı!',1000);return;}
   if(previous<0 && recipe.pieces.length>=80){hint('Tabak dolu.');return;}
@@ -303,7 +321,9 @@ function pickFood(id,x,z){
     if(board.covers(x,z)){moveCoverHint();return;}
   }
   if(recipe.coverRemoved&&pantry[id].bread===recipe.bread){
-    checkpoint();editBread(recipe,'placeTop',{x,z,yaw:0});
+    const pose=boundedCoverPose({x,z,yaw:0});
+    if(stackBlocked({...recipe,coverRemoved:false},pose))return;
+    checkpoint();editBread(recipe,'placeTop',pose);
     selected=coverSelection;update();clink(id);return;
   }
   const piece=makePiece(id,x,z);releasePiece(piece);
@@ -553,7 +573,13 @@ function coverAngle(e,pose,height){
 }
 function twistCover(delta,fromWheel=false){
   const pose=board.coverPose();if(!pose)return;
-  board.adjustCover({...pose,yaw:pose.yaw+delta});keepCover(fromWheel);hint('');
+  hint('');board.adjustCover({...pose,yaw:pose.yaw+delta});keepCover(fromWheel);
+}
+function rotatePiece(piece,angle,wheel=false){
+  const a=round(angle%(2*Math.PI));
+  if(pantry[piece.food].bread&&stackBlocked({...recipe,pieces:recipe.pieces.map(p=>p===piece?{...p,a}:p)}))return false;
+  if(wheel)checkpointWheel(piece);else checkpoint();
+  piece.a=a;update();return true;
 }
 turn.onpointerdown=e=>{
   if(gesture||e.button!==0)return;
@@ -565,7 +591,7 @@ turn.onpointerdown=e=>{
     gesture={kind:'cover-turn',id:e.pointerId,pose,height,start,px:e.clientX,py:e.clientY,moved:false};return;
   }
   const p=recipe.pieces[selected];if(!p)return;
-  turn.setPointerCapture(e.pointerId);gesture={kind:'turn',id:e.pointerId,a:p.a,start:angleAt(e,p),old:JSON.stringify(recipe)};
+  turn.setPointerCapture(e.pointerId);gesture={kind:'turn',id:e.pointerId,a:p.a,start:angleAt(e,p)};
 };
 // A handle can receive several moves before the display can present one.
 let turnFrame=0,pendingTurn=null;
@@ -598,14 +624,14 @@ turn.onpointerup=turn.onpointercancel=turn.onlostpointercapture=e=>{
     return;
   }
   const g=gesture;gesture=null;
-  if(outcome==='cancel')recipe.pieces[selected].a=g.a;
-  else{if(Math.abs(recipe.pieces[selected].a-g.a)<.01)recipe.pieces[selected].a+=Math.PI/12;recipe.pieces[selected].a=round(recipe.pieces[selected].a%(Math.PI*2));checkpoint(g.old);}
-  update();
+  const piece=recipe.pieces[selected],angle=piece.a;
+  piece.a=g.a;
+  if(outcome==='cancel'||!rotatePiece(piece,Math.abs(angle-g.a)<.01?angle+Math.PI/12:angle))update();
 };
 turn.onclick=e=>{
   if(mode==='camera'||selected===coverSelection){if(e.detail===0)twistCover(Math.PI/12);return;}
   if(e.detail!==0||selected<0)return;
-  checkpoint();recipe.pieces[selected].a=round((recipe.pieces[selected].a+Math.PI/12)%(2*Math.PI));update();
+  rotatePiece(recipe.pieces[selected],recipe.pieces[selected].a+Math.PI/12);
 };
 canvas.addEventListener('wheel',e=>{
   if(!board||gesture||e.ctrlKey||!e.deltaY)return;
@@ -617,8 +643,8 @@ canvas.addEventListener('wheel',e=>{
   }
   if(mode==='camera')return;
   const i=board.pick(e.clientX,e.clientY)?.i??-1;if(!movablePiece(i))return;
-  e.preventDefault();selected=i;const piece=recipe.pieces[i];checkpointWheel(piece);
-  piece.a=round((piece.a+Math.sign(e.deltaY)*.14)%(2*Math.PI));update();
+  e.preventDefault();selected=i;const piece=recipe.pieces[i];
+  rotatePiece(piece,piece.a+Math.sign(e.deltaY)*.14,true);
 },{passive:false});
 function dialog(title,html,photoDialog=false){
   if(!photoDialog)photos.send('dismiss');
@@ -715,13 +741,24 @@ function openTea(){
   $('#remove-glass').onclick=()=>{sheet.close();removeSelected();canvas.focus({preventScroll:true});};
   $('#drain').onclick=()=>{checkpoint();p.dem=p.water=0;update();show();};$('#serve').onclick=()=>sheet.close();show();
 }
+function photoStackBlocked(){
+  const cover=photoCoverFor(recipe);
+  if(cover==='open'||cover==='side')return false;
+  const pose=board.coverPose();
+  if(pose)return stackBlocked(recipe,pose);
+  hint(breadStackMessage);return true;
+}
 function camera(a){
   if(gesture)return;
   photos.send('dismiss');mode='camera';angle=a;selected=-1;chooseBrush(null);hint('');showHandle();$('#game').classList.add('camera');
   $('#back').hidden=$('#views').hidden=$('#finder').hidden=false;
   showCoverChoice();
   for(const b of $('#views').children)b.setAttribute('aria-pressed',String(b.dataset.angle===a));
-  board.setView(a);lidButton();showHandle();canvas.focus({preventScroll:true});coverHint();
+  board.setView(a);
+  if(photoStackBlocked()){
+    recipe.photoCover='open';board.refreshCover();showCoverChoice();save();
+  }else coverHint();
+  lidButton();showHandle();canvas.focus({preventScroll:true});
 }
 function leaveCamera(){
   if(gesture)return;
@@ -731,9 +768,14 @@ coverSelect.onchange=()=>{
   const choice=coverSelect.value;
   if(mode!=='camera'||recipe.coverRemoved||(choice!=='table'&&!Object.hasOwn(photoCovers,choice)))return;
   if(gesture){showCoverChoice();return;}
-  checkpoint();
+  const previous=recipe.photoCover,before=JSON.stringify(recipe);
   if(choice==='table')delete recipe.photoCover;else recipe.photoCover=choice;
-  board.refreshCover();showHandle();save();coverHint();
+  board.refreshCover();
+  if(photoStackBlocked()){
+    if(previous===undefined)delete recipe.photoCover;else recipe.photoCover=previous;
+    board.refreshCover();showCoverChoice();return;
+  }
+  checkpoint(before);showHandle();save();coverHint();
 };
 for(const [id,name] of Object.entries(cameraNames)){
   const btn=document.createElement('button');btn.dataset.angle=id;btn.textContent=name;btn.onclick=()=>camera(id);$('#views').append(btn);
@@ -755,6 +797,7 @@ function photoPreview(record,fromAlbum=false){
   };
   if(fromAlbum)$('#remix').onclick=()=>{
     const next=readRecipe(record.recipe)||emptyRecipe();
+    if(exceedsBreadStack(next)){feedback.textContent=breadStackMessage;return;}
     withArt(recipeArt(next),()=>{checkpoint();recipe=next;selected=-1;chooseBrush(null);sheet.close();leaveCamera();update();});
   };
   $('#share').onclick=async()=>{
@@ -862,7 +905,7 @@ function editKey(e){
   if(e.key==='Enter'&&(p.food==='cay'||pantry[p.food].opening)){e.preventDefault();openDrink();return;}
   const dirs={ArrowLeft:[-.02,0],ArrowRight:[.02,0],ArrowUp:[0,-.02],ArrowDown:[0,.02]};
   if(dirs[e.key]){e.preventDefault();const [dx,dz]=dirs[e.key];releasePiece({...p,x:p.x+dx,z:p.z+dz},selected);}
-  if(e.key.toLowerCase()==='r'){checkpoint();p.a=round((p.a+.15)%(2*Math.PI));update();}
+  if(e.key.toLowerCase()==='r')rotatePiece(p,p.a+.15);
 }
 new ResizeObserver(()=>requestAnimationFrame(showHandle)).observe(stage);
 window.render_game_to_text=()=>JSON.stringify({ready:!!board,mode,photo:photos.state,gesture:gesture?.kind??null,angle,selected,brush,music:music.state(),camera:board?.pose(),drinkService:drinkService?.state()??null,coordinates:'x right, z down, one unit is the bread width',...recipe,photoCover:photoCoverFor(recipe),visibleCoverPose:board?.coverPose()});
@@ -887,7 +930,13 @@ function previewShared(shared){
   dialog('Paylaşılan sofra','<div id="shared-print"></div><div class="buttons"><button id="import-recipe" class="primary">Sofraya ekle</button><button id="keep-draft">Soframda kal</button></div>');
   print.className='print';$('#shared-print').append(print);
   $('#keep-draft').onclick=()=>sheet.close();
-  $('#import-recipe').onclick=()=>{checkpoint();recipe=shared;selected=-1;chooseBrush(null);sheet.close();update();};
+  const accept=$('#import-recipe');
+  if(exceedsBreadStack(shared)){
+    accept.disabled=true;
+    const feedback=document.createElement('p');feedback.className='feedback';feedback.textContent=breadStackMessage;
+    $('#sheet-content').append(feedback);
+  }
+  accept.onclick=()=>{checkpoint();recipe=shared;selected=-1;chooseBrush(null);sheet.close();update();};
 }
 window.addEventListener('hashchange',openSharedLink);
 try{

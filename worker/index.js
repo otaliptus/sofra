@@ -1,4 +1,5 @@
 import { shareableRecipe } from '../src/shared/recipe.js';
+import { breadStackMessage, exceedsBreadStack } from '../src/shared/bread-stack.js';
 import { securityHeaders } from './security-headers.mjs';
 
 const root='/api/pano', rowLimit=8, bodyLimit=48*1024;
@@ -33,6 +34,9 @@ export function normalizePost(input){
   if(!title||[...title].length>48||/[\p{Cc}\p{Cf}<>]/u.test(title))fail(400,'Tarif adı 1–48 karakter olmalı.');
   const recipe=shareableRecipe(input.recipe);
   if(!recipe)fail(400,'Bu tarif panoda gösterilemiyor. Daha sade bir tarif dene.');
+  if(exceedsBreadStack(recipe))fail(400,breadStackMessage);
+  const photoTop=recipe.photoCover==='full'?{x:0,z:0,yaw:0}:recipe.photoCover==='custom'?recipe.photoCoverPose??recipe.coverPose:null;
+  if(photoTop&&exceedsBreadStack(recipe,photoTop))fail(400,breadStackMessage);
   const angle=['top','low','tilt','corner','free'].includes(input.angle)?input.angle:'tilt';
   const pose=input.pose;
   if(!pose||!Number.isFinite(pose.yaw)||!Number.isFinite(pose.elevation))fail(400,'Fotoğraf açısı geçersiz.');

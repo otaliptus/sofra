@@ -11,6 +11,7 @@ import { createFoodPicker, intersectStrips, outsideFootprint, pickTarget } from 
 import { createCoating } from './food-marks.js';
 import { breads, cloths, emptyRecipe, pantry, openingPercent, sliceThickness, localX, clamp, round, tableCoverFor, photoCoverFor, boundedCoverPose } from '../shared/recipe.js';
 import { makeFood } from './food-model.js';
+import { exceedsBreadStack } from '../shared/bread-stack.js';
 import { crownPlacement, parkedCrown } from './bread-crown.js';
 
 export {cameraNames} from '../shared/recipe.js';
@@ -355,6 +356,12 @@ export async function createBoard(canvas,initial=emptyRecipe(),printOnly=false){
     if(mode==='side')pose=parkedCrown(lid,plateRadius,editorAspect);
     else if(mode==='custom')pose=(view&&recipe.photoCover==='custom'&&recipe.photoCoverPose)||recipe.coverPose;
     else pose=crownPlacement(mode,bread,lid,recipe.pieces,modelFor);
+    // Half-overlay placement is chosen from the actual food silhouettes, so
+    // check its final pose here as well as the explicit poses in the editor.
+    if(view&&mode==='half'&&exceedsBreadStack(recipe,pose)&&!exceedsBreadStack(recipe)){
+      lid.group.visible=false;
+      return;
+    }
     settleCover(pose,mode==='half'||mode==='custom' ? .48 : .28);
   }
   function applyCrownShape(){

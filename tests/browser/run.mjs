@@ -1,5 +1,6 @@
 // Check event delivery in a real browser. All board API calls are intercepted.
 import assert from 'node:assert/strict';
+import {checkBreadStack} from './bread-stack.mjs';
 import {checkPicking} from './picking.mjs';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
@@ -184,6 +185,7 @@ try{
   console.log('Board: both finished photo sizes survive a reload with WebGL disabled.');
 
   await checkPicking(browser,base);
+  await checkBreadStack(browser,base);
 
   // The original hash format still arrives at the home page from saved links.
   const legacy=await browser.newPage();
